@@ -1,0 +1,17 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Development Servers",
+      "type": "shell",
+      "command": "pwsh.exe",
+      "args": [
+        "-Command",
+        "Write-Host 'Starting Klova Development Servers...' -ForegroundColor Green; Start-Process pwsh -ArgumentList '-NoExit', '-Command', 'cd C:/Mithuranga/klova/backend; Write-Host \"Starting Backend Server...\" -ForegroundColor Blue; npm run dev' -WindowStyle Normal; Start-Sleep 2; Start-Process pwsh -ArgumentList '-NoExit', '-Command', 'cd C:/Mithuranga/klova/frontend; Write-Host \"Starting Frontend Server...\" -ForegroundColor Cyan; npm run dev' -WindowStyle Normal; Write-Host 'Both servers are starting in separate windows!' -ForegroundColor Green"
+      ],
+      "group": "build",
+      "isBackground": false,
+      "problemMatcher": []
+    }
+  ]
+}
