@@ -97,7 +97,7 @@
             <div class="bg-white rounded-lg shadow-md overflow-hidden group-hover:shadow-lg transition-shadow">
               <div class="aspect-w-1 aspect-h-1 h-64 overflow-hidden">
                 <img 
-                  :src="product.primary_image || '/placeholder-product.jpg'" 
+                  :src="imageUrl(product.primary_image) || placeholderImg()" 
                   :alt="product.name"
                   class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
@@ -184,6 +184,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ArrowRightIcon } from '@heroicons/vue/24/outline'
+import { imageUrl, placeholderImg } from '../utils/images'
 import { useCartStore } from '../stores/cart'
 import api from '../utils/api'
 

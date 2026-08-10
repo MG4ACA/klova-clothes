@@ -92,7 +92,7 @@
         >
           <div class="aspect-w-1 aspect-h-1 h-64 overflow-hidden">
             <img 
-              :src="product.primary_image || '/placeholder-product.jpg'" 
+              :src="imageUrl(product.primary_image) || placeholderImg()" 
               :alt="product.name"
               class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
@@ -183,6 +183,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCartStore } from '../stores/cart'
 import { MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
+import { imageUrl, placeholderImg } from '../utils/images'
 import api from '../utils/api'
 
 const route = useRoute()
