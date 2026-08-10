@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
 const Joi = require('joi');
-const { pool } = require('../config/database');
+const { prisma } = require('../config/prisma');
 const { requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -50,62 +50,56 @@ const upload = multer({
 // Dashboard statistics
 router.get('/dashboard', async (req, res, next) => {
   try {
-    // Get various statistics
-    const [orderStats] = await pool.execute(`
-      SELECT 
-        COUNT(*) as total_orders,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_orders,
-        SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) as confirmed_orders,
-        SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered_orders,
-        SUM(total_amount) as total_revenue
-      FROM orders
-    `);
+    const total_orders = await prisma.orders.count();
+    const pending_orders = await prisma.orders.count({ where: { status: 'pending' } });
+    const confirmed_orders = await prisma.orders.count({ where: { status: 'confirmed' } });
+    const delivered_orders = await prisma.orders.count({ where: { status: 'delivered' } });
+    
+    const revAggr = await prisma.orders.aggregate({ _sum: { total_amount: true } });
+    const total_revenue = Number(revAggr._sum.total_amount || 0);
 
-    const [productStats] = await pool.execute(`
-      SELECT 
-        COUNT(*) as total_products,
-        SUM(CASE WHEN stock_quantity <= min_stock_level THEN 1 ELSE 0 END) as low_stock_products,
-        SUM(CASE WHEN is_featured = true THEN 1 ELSE 0 END) as featured_products
-      FROM products WHERE is_active = true
-    `);
+    const total_products = await prisma.products.count({ where: { is_active: true } });
+    const featured_products = await prisma.products.count({ where: { is_active: true, is_featured: true } });
+    
+    // For comparing two columns we can use raw query
+    const lowStockRaw = await prisma.$queryRaw`SELECT COUNT(*) as count FROM products WHERE stock_quantity <= min_stock_level AND is_active = true`;
+    const low_stock_products = Number(lowStockRaw[0].count);
 
-    const [userStats] = await pool.execute(`
-      SELECT 
-        COUNT(*) as total_customers
-      FROM users WHERE role = 'customer' AND is_active = true
-    `);
+    const total_customers = await prisma.users.count({ where: { role: 'customer', is_active: true } });
 
-    // Recent orders
-    const [recentOrders] = await pool.execute(`
-      SELECT 
-        o.id, o.order_number, o.total_amount, o.status, o.created_at,
-        CONCAT(u.first_name, ' ', u.last_name) as customer_name
-      FROM orders o
-      JOIN users u ON o.user_id = u.id
-      ORDER BY o.created_at DESC
-      LIMIT 5
-    `);
+    const recentOrders = await prisma.orders.findMany({
+      orderBy: { created_at: 'desc' },
+      take: 5,
+      include: { users: true }
+    });
 
-    // Low stock products
-    const [lowStockProducts] = await pool.execute(`
-      SELECT 
-        id, name, product_code, stock_quantity, min_stock_level
+    const formattedRecentOrders = recentOrders.map(o => ({
+      id: o.id,
+      order_number: o.order_number,
+      total_amount: Number(o.total_amount),
+      status: o.status,
+      created_at: o.created_at,
+      customer_name: `${o.users.first_name} ${o.users.last_name}`
+    }));
+
+    const lowStockProducts = await prisma.$queryRaw`
+      SELECT id, name, product_code, stock_quantity, min_stock_level
       FROM products 
       WHERE stock_quantity <= min_stock_level AND is_active = true
       ORDER BY stock_quantity ASC
       LIMIT 5
-    `);
+    `;
 
     res.json({
       success: true,
       message: 'Dashboard data retrieved successfully',
       data: {
         stats: {
-          orders: orderStats[0],
-          products: productStats[0],
-          users: userStats[0]
+          orders: { total_orders, pending_orders, confirmed_orders, delivered_orders, total_revenue },
+          products: { total_products, low_stock_products, featured_products },
+          users: { total_customers }
         },
-        recentOrders,
+        recentOrders: formattedRecentOrders,
         lowStockProducts
       },
       error: null
@@ -124,42 +118,41 @@ router.get('/orders', async (req, res, next) => {
     const offset = (page - 1) * limit;
     const status = req.query.status;
 
-    let whereClause = '';
-    let queryParams = [];
-
+    const whereClause = {};
     if (status && status !== 'all') {
-      whereClause = 'WHERE o.status = ?';
-      queryParams.push(status);
+      whereClause.status = status;
     }
 
-    const [orders] = await pool.execute(`
-      SELECT 
-        o.id, o.order_number, o.total_amount, o.status, o.payment_method, o.payment_status,
-        o.created_at, o.updated_at,
-        CONCAT(u.first_name, ' ', u.last_name) as customer_name,
-        u.email as customer_email, u.phone as customer_phone
-      FROM orders o
-      JOIN users u ON o.user_id = u.id
-      ${whereClause}
-      ORDER BY o.created_at DESC
-      LIMIT ? OFFSET ?
-    `, [...queryParams, limit, offset]);
+    const [orders, total] = await Promise.all([
+      prisma.orders.findMany({
+        where: whereClause,
+        orderBy: { created_at: 'desc' },
+        take: limit,
+        skip: offset,
+        include: { users: true }
+      }),
+      prisma.orders.count({ where: whereClause })
+    ]);
 
-    // Get total count
-    const [countResult] = await pool.execute(`
-      SELECT COUNT(*) as total
-      FROM orders o
-      JOIN users u ON o.user_id = u.id
-      ${whereClause}
-    `, queryParams);
-
-    const total = countResult[0].total;
+    const formattedOrders = orders.map(o => ({
+      id: o.id,
+      order_number: o.order_number,
+      total_amount: Number(o.total_amount),
+      status: o.status,
+      payment_method: o.payment_method,
+      payment_status: o.payment_status,
+      created_at: o.created_at,
+      updated_at: o.updated_at,
+      customer_name: `${o.users.first_name} ${o.users.last_name}`,
+      customer_email: o.users.email,
+      customer_phone: o.users.phone
+    }));
 
     res.json({
       success: true,
       message: 'Orders retrieved successfully',
       data: {
-        orders,
+        orders: formattedOrders,
         pagination: {
           currentPage: page,
           totalPages: Math.ceil(total / limit),
@@ -180,17 +173,26 @@ router.get('/orders/:orderId', async (req, res, next) => {
   try {
     const { orderId } = req.params;
 
-    const [orders] = await pool.execute(`
-      SELECT 
-        o.*, 
-        CONCAT(u.first_name, ' ', u.last_name) as customer_name,
-        u.email as customer_email, u.phone as customer_phone, u.address as customer_address
-      FROM orders o
-      JOIN users u ON o.user_id = u.id
-      WHERE o.id = ?
-    `, [orderId]);
+    const order = await prisma.orders.findUnique({
+      where: { id: parseInt(orderId) },
+      include: {
+        users: true,
+        order_items: {
+          include: {
+            products: {
+              include: {
+                product_images: {
+                  where: { is_primary: true },
+                  take: 1
+                }
+              }
+            }
+          }
+        }
+      }
+    });
 
-    if (orders.length === 0) {
+    if (!order) {
       return res.status(404).json({
         success: false,
         message: 'Order not found',
@@ -198,25 +200,30 @@ router.get('/orders/:orderId', async (req, res, next) => {
       });
     }
 
-    const order = orders[0];
-
-    // Get order items
-    const [items] = await pool.execute(`
-      SELECT 
-        oi.*, p.name as product_name, p.product_code,
-        pi.image_url as primary_image
-      FROM order_items oi
-      JOIN products p ON oi.product_id = p.id
-      LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = true
-      WHERE oi.order_id = ?
-    `, [orderId]);
-
-    order.items = items;
+    const formattedOrder = {
+      ...order,
+      total_amount: Number(order.total_amount),
+      customer_name: `${order.users.first_name} ${order.users.last_name}`,
+      customer_email: order.users.email,
+      customer_phone: order.users.phone,
+      customer_address: order.users.address,
+      items: order.order_items.map(item => ({
+        ...item,
+        unit_price: Number(item.unit_price),
+        total_price: Number(item.total_price),
+        product_name: item.products.name,
+        product_code: item.products.product_code,
+        primary_image: item.products.product_images.length > 0 ? item.products.product_images[0].image_url : null
+      }))
+    };
+    
+    delete formattedOrder.users;
+    delete formattedOrder.order_items;
 
     res.json({
       success: true,
       message: 'Order retrieved successfully',
-      data: order,
+      data: formattedOrder,
       error: null
     });
 
@@ -231,7 +238,7 @@ router.put('/orders/:orderId/status', async (req, res, next) => {
     const { orderId } = req.params;
     const schema = Joi.object({
       status: Joi.string().valid('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled').required(),
-      adminNotes: Joi.string().optional()
+      adminNotes: Joi.string().optional().allow('')
     });
 
     const { error, value } = schema.validate(req.body);
@@ -245,10 +252,13 @@ router.put('/orders/:orderId/status', async (req, res, next) => {
 
     const { status, adminNotes } = value;
 
-    await pool.execute(
-      'UPDATE orders SET status = ?, admin_notes = ? WHERE id = ?',
-      [status, adminNotes || null, orderId]
-    );
+    await prisma.orders.update({
+      where: { id: parseInt(orderId) },
+      data: {
+        status,
+        admin_notes: adminNotes || null
+      }
+    });
 
     res.json({
       success: true,
@@ -271,45 +281,49 @@ router.get('/products', async (req, res, next) => {
     const category = req.query.category;
     const search = req.query.search;
 
-    let whereClause = '';
-    let queryParams = [];
+    const whereClause = {};
 
     if (category) {
-      whereClause += (whereClause ? ' AND ' : 'WHERE ') + 'c.slug = ?';
-      queryParams.push(category);
+      whereClause.categories = { slug: category };
     }
 
     if (search) {
-      whereClause += (whereClause ? ' AND ' : 'WHERE ') + '(p.name LIKE ? OR p.product_code LIKE ?)';
-      queryParams.push(`%${search}%`, `%${search}%`);
+      whereClause.OR = [
+        { name: { contains: search } },
+        { product_code: { contains: search } }
+      ];
     }
 
-    const [products] = await pool.execute(`
-      SELECT 
-        p.*, c.name as category_name,
-        pi.image_url as primary_image
-      FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
-      LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = true
-      ${whereClause}
-      ORDER BY p.created_at DESC
-      LIMIT ? OFFSET ?
-    `, [...queryParams, limit, offset]);
+    const [products, total] = await Promise.all([
+      prisma.products.findMany({
+        where: whereClause,
+        orderBy: { created_at: 'desc' },
+        take: limit,
+        skip: offset,
+        include: {
+          categories: true,
+          product_images: {
+            where: { is_primary: true },
+            take: 1
+          }
+        }
+      }),
+      prisma.products.count({ where: whereClause })
+    ]);
 
-    const [countResult] = await pool.execute(`
-      SELECT COUNT(*) as total
-      FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
-      ${whereClause}
-    `, queryParams);
-
-    const total = countResult[0].total;
+    const formattedProducts = products.map(p => ({
+      ...p,
+      price: Number(p.price),
+      discount_price: p.discount_price ? Number(p.discount_price) : null,
+      category_name: p.categories?.name,
+      primary_image: p.product_images.length > 0 ? p.product_images[0].image_url : null
+    }));
 
     res.json({
       success: true,
       message: 'Products retrieved successfully',
       data: {
-        products,
+        products: formattedProducts,
         pagination: {
           currentPage: page,
           totalPages: Math.ceil(total / limit),
@@ -327,11 +341,7 @@ router.get('/products', async (req, res, next) => {
 
 // Create new product
 router.post('/products', upload.array('images', 5), async (req, res, next) => {
-  const connection = await pool.getConnection();
-  
   try {
-    await connection.beginTransaction();
-
     const schema = Joi.object({
       productCode: Joi.string().required(),
       name: Joi.string().required(),
@@ -360,101 +370,87 @@ router.post('/products', upload.array('images', 5), async (req, res, next) => {
       stockQuantity, minStockLevel, isFeatured, sizes, colors 
     } = value;
 
-    // Generate slug
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-    // Create product
-    const [productResult] = await connection.execute(`
-      INSERT INTO products (
-        product_code, name, slug, description, category_id, price, discount_price,
-        stock_quantity, min_stock_level, is_featured
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      productCode, name, slug, description, categoryId, price, 
-      discountPrice || null, stockQuantity, minStockLevel, isFeatured
-    ]);
+    const productResult = await prisma.$transaction(async (tx) => {
+      const p = await tx.products.create({
+        data: {
+          product_code: productCode,
+          name,
+          slug,
+          description: description || null,
+          category_id: categoryId,
+          price,
+          discount_price: discountPrice || null,
+          stock_quantity: stockQuantity,
+          min_stock_level: minStockLevel,
+          is_featured: isFeatured
+        }
+      });
 
-    const productId = productResult.insertId;
-
-    // Handle image uploads
-    if (req.files && req.files.length > 0) {
-      for (let i = 0; i < req.files.length; i++) {
-        const file = req.files[i];
-        const imageUrl = `/uploads/products/${file.filename}`;
-        const isPrimary = i === 0; // First image is primary
-
-        await connection.execute(`
-          INSERT INTO product_images (product_id, image_url, is_primary, sort_order)
-          VALUES (?, ?, ?, ?)
-        `, [productId, imageUrl, isPrimary, i]);
+      if (req.files && req.files.length > 0) {
+        await tx.product_images.createMany({
+          data: req.files.map((file, i) => ({
+            product_id: p.id,
+            image_url: `/uploads/products/${file.filename}`,
+            is_primary: i === 0,
+            sort_order: i
+          }))
+        });
       }
-    }
 
-    // Add size variants
-    if (sizes && sizes.length > 0) {
-      for (const size of sizes) {
-        await connection.execute(`
-          INSERT INTO product_variants (product_id, variant_type, variant_value, stock_quantity)
-          VALUES (?, 'size', ?, ?)
-        `, [productId, size, Math.floor(stockQuantity / sizes.length)]);
+      if (sizes && sizes.length > 0) {
+        await tx.product_variants.createMany({
+          data: sizes.map(size => ({
+            product_id: p.id,
+            variant_type: 'size',
+            variant_value: size,
+            stock_quantity: Math.floor(stockQuantity / sizes.length)
+          }))
+        });
       }
-    }
 
-    // Add color variants
-    if (colors && colors.length > 0) {
-      for (const color of colors) {
-        await connection.execute(`
-          INSERT INTO product_variants (product_id, variant_type, variant_value, stock_quantity)
-          VALUES (?, 'color', ?, ?)
-        `, [productId, color, Math.floor(stockQuantity / colors.length)]);
+      if (colors && colors.length > 0) {
+        await tx.product_variants.createMany({
+          data: colors.map(color => ({
+            product_id: p.id,
+            variant_type: 'color',
+            variant_value: color,
+            stock_quantity: Math.floor(stockQuantity / colors.length)
+          }))
+        });
       }
-    }
 
-    await connection.commit();
+      return p;
+    });
 
     res.status(201).json({
       success: true,
       message: 'Product created successfully',
-      data: { productId, slug },
+      data: { productId: productResult.id, slug: productResult.slug },
       error: null
     });
 
   } catch (error) {
-    await connection.rollback();
-    
-    // Clean up uploaded files on error
     if (req.files) {
       for (const file of req.files) {
         try {
           await fs.unlink(file.path);
-        } catch (unlinkError) {
-          console.error('Error deleting file:', unlinkError);
-        }
+        } catch (unlinkError) {}
       }
     }
-    
     next(error);
-  } finally {
-    connection.release();
   }
 });
 
 // Update product
 router.put('/products/:productId', upload.array('images', 5), async (req, res, next) => {
-  const connection = await pool.getConnection();
-  
   try {
-    await connection.beginTransaction();
-
     const { productId } = req.params;
     
-    // Check if product exists
-    const [existingProducts] = await connection.execute(
-      'SELECT id FROM products WHERE id = ?',
-      [productId]
-    );
+    const existingProduct = await prisma.products.findUnique({ where: { id: parseInt(productId) } });
 
-    if (existingProducts.length === 0) {
+    if (!existingProduct) {
       return res.status(404).json({
         success: false,
         message: 'Product not found',
@@ -483,56 +479,44 @@ router.put('/products/:productId', upload.array('images', 5), async (req, res, n
       });
     }
 
-    // Build update query dynamically
-    const updateFields = [];
-    const updateValues = [];
+    const updateData = {};
+    if (value.name !== undefined) updateData.name = value.name;
+    if (value.description !== undefined) updateData.description = value.description;
+    if (value.categoryId !== undefined) updateData.category_id = value.categoryId;
+    if (value.price !== undefined) updateData.price = value.price;
+    if (value.discountPrice !== undefined) updateData.discount_price = value.discountPrice;
+    if (value.stockQuantity !== undefined) updateData.stock_quantity = value.stockQuantity;
+    if (value.minStockLevel !== undefined) updateData.min_stock_level = value.minStockLevel;
+    if (value.isFeatured !== undefined) updateData.is_featured = value.isFeatured;
+    if (value.isActive !== undefined) updateData.is_active = value.isActive;
 
-    Object.keys(value).forEach(key => {
-      const dbField = {
-        name: 'name',
-        description: 'description', 
-        categoryId: 'category_id',
-        price: 'price',
-        discountPrice: 'discount_price',
-        stockQuantity: 'stock_quantity',
-        minStockLevel: 'min_stock_level',
-        isFeatured: 'is_featured',
-        isActive: 'is_active'
-      }[key];
+    await prisma.$transaction(async (tx) => {
+      if (Object.keys(updateData).length > 0) {
+        await tx.products.update({
+          where: { id: parseInt(productId) },
+          data: updateData
+        });
+      }
 
-      if (dbField) {
-        updateFields.push(`${dbField} = ?`);
-        updateValues.push(value[key]);
+      if (req.files && req.files.length > 0) {
+        const images = await tx.product_images.findMany({
+          where: { product_id: parseInt(productId) },
+          orderBy: { sort_order: 'desc' },
+          take: 1
+        });
+        
+        let nextSortOrder = images.length > 0 ? images[0].sort_order + 1 : 0;
+
+        await tx.product_images.createMany({
+          data: req.files.map(file => ({
+            product_id: parseInt(productId),
+            image_url: `/uploads/products/${file.filename}`,
+            is_primary: false,
+            sort_order: nextSortOrder++
+          }))
+        });
       }
     });
-
-    if (updateFields.length > 0) {
-      updateValues.push(productId);
-      await connection.execute(
-        `UPDATE products SET ${updateFields.join(', ')} WHERE id = ?`,
-        updateValues
-      );
-    }
-
-    // Handle new image uploads
-    if (req.files && req.files.length > 0) {
-      // Get current max sort order
-      const [maxSortResult] = await connection.execute(
-        'SELECT COALESCE(MAX(sort_order), -1) as max_sort FROM product_images WHERE product_id = ?',
-        [productId]
-      );
-      let nextSortOrder = maxSortResult[0].max_sort + 1;
-
-      for (const file of req.files) {
-        const imageUrl = `/uploads/products/${file.filename}`;
-        await connection.execute(`
-          INSERT INTO product_images (product_id, image_url, is_primary, sort_order)
-          VALUES (?, ?, false, ?)
-        `, [productId, imageUrl, nextSortOrder++]);
-      }
-    }
-
-    await connection.commit();
 
     res.json({
       success: true,
@@ -542,22 +526,14 @@ router.put('/products/:productId', upload.array('images', 5), async (req, res, n
     });
 
   } catch (error) {
-    await connection.rollback();
-    
-    // Clean up uploaded files on error
     if (req.files) {
       for (const file of req.files) {
         try {
           await fs.unlink(file.path);
-        } catch (unlinkError) {
-          console.error('Error deleting file:', unlinkError);
-        }
+        } catch (unlinkError) {}
       }
     }
-    
     next(error);
-  } finally {
-    connection.release();
   }
 });
 
@@ -566,12 +542,12 @@ router.delete('/products/:productId', async (req, res, next) => {
   try {
     const { productId } = req.params;
 
-    const [result] = await pool.execute(
-      'UPDATE products SET is_active = false WHERE id = ?',
-      [productId]
-    );
+    const result = await prisma.products.updateMany({
+      where: { id: parseInt(productId) },
+      data: { is_active: false }
+    });
 
-    if (result.affectedRows === 0) {
+    if (result.count === 0) {
       return res.status(404).json({
         success: false,
         message: 'Product not found',

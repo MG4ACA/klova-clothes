@@ -1,6 +1,6 @@
 const express = require('express');
 const Joi = require('joi');
-const { pool } = require('../config/database');
+const { prisma } = require('../config/prisma');
 
 const router = express.Router();
 
@@ -14,13 +14,59 @@ const generateOrderNumber = () => {
   return `KLV${year}${month}${day}${random}`;
 };
 
+// Generate WhatsApp message
+const generateWhatsAppMessage = async (orderId) => {
+  const order = await prisma.orders.findUnique({
+    where: { id: orderId },
+    include: {
+      users: true,
+      order_items: {
+        include: { products: true }
+      }
+    }
+  });
+
+  if (!order) return '';
+
+  let message = `🛍️ *New Order from Klova Store*\n\n`;
+  message += `📝 *Order Details:*\n`;
+  message += `Order #: ${order.order_number}\n`;
+  message += `Date: ${new Date(order.created_at).toLocaleDateString()}\n\n`;
+
+  message += `👤 *Customer Information:*\n`;
+  message += `Name: ${order.users.first_name} ${order.users.last_name}\n`;
+  message += `Email: ${order.users.email}\n`;
+  if (order.users.phone) message += `Phone: ${order.users.phone}\n`;
+  message += `\n`;
+
+  message += `📦 *Items Ordered:*\n`;
+  order.order_items.forEach((item, index) => {
+    message += `${index + 1}. ${item.products.name} (${item.products.product_code})\n`;
+    if (item.size) message += `   Size: ${item.size}\n`;
+    if (item.color) message += `   Color: ${item.color}\n`;
+    message += `   Qty: ${item.quantity} × Rs. ${item.unit_price} = Rs. ${item.total_price}\n\n`;
+  });
+
+  message += `💰 *Total Amount: Rs. ${order.total_amount}*\n\n`;
+
+  message += `🚚 *Shipping Address:*\n`;
+  message += `${order.shipping_address}\n`;
+  message += `${order.shipping_city}\n\n`;
+
+  message += `💳 *Payment Method:* ${order.payment_method === 'bank_transfer' ? 'Bank Transfer' : 'Cash on Delivery'}\n\n`;
+
+  if (order.customer_notes) {
+    message += `📝 *Customer Notes:* ${order.customer_notes}\n\n`;
+  }
+
+  message += `Please confirm this order. Thank you! 🙏`;
+
+  return message;
+};
+
 // Create new order
 router.post('/', async (req, res, next) => {
-  const connection = await pool.getConnection();
-  
   try {
-    await connection.beginTransaction();
-
     const schema = Joi.object({
       items: Joi.array().items(
         Joi.object({
@@ -53,86 +99,78 @@ router.post('/', async (req, res, next) => {
     const validatedItems = [];
 
     for (const item of items) {
-      const [products] = await connection.execute(
-        'SELECT id, name, price, discount_price, stock_quantity FROM products WHERE id = ? AND is_active = true',
-        [item.productId]
-      );
+      const product = await prisma.products.findFirst({
+        where: { id: item.productId, is_active: true }
+      });
 
-      if (products.length === 0) {
+      if (!product) {
         throw new Error(`Product with ID ${item.productId} not found`);
       }
-
-      const product = products[0];
       
       if (product.stock_quantity < item.quantity) {
         throw new Error(`Insufficient stock for product: ${product.name}`);
       }
 
-      const unitPrice = product.discount_price || product.price;
+      const unitPrice = Number(product.discount_price || product.price);
       const totalPrice = unitPrice * item.quantity;
       totalAmount += totalPrice;
 
       validatedItems.push({
         ...item,
-        product,
         unitPrice,
         totalPrice
       });
     }
 
-    // Generate order number
     const orderNumber = generateOrderNumber();
 
-    // Create order
-    const [orderResult] = await connection.execute(
-      `INSERT INTO orders (
-        order_number, user_id, total_amount, status, payment_method, payment_status,
-        shipping_address, shipping_city, shipping_postal_code, customer_notes
-      ) VALUES (?, ?, ?, 'pending', ?, 'pending', ?, ?, ?, ?)`,
-      [
-        orderNumber, req.user.id, totalAmount, paymentMethod,
-        shippingAddress, shippingCity, shippingPostalCode || null, customerNotes || null
-      ]
-    );
+    const orderResult = await prisma.$transaction(async (tx) => {
+      const order = await tx.orders.create({
+        data: {
+          order_number: orderNumber,
+          user_id: req.user.id,
+          total_amount: totalAmount,
+          status: 'pending',
+          payment_method: paymentMethod,
+          payment_status: 'pending',
+          shipping_address: shippingAddress,
+          shipping_city: shippingCity,
+          shipping_postal_code: shippingPostalCode || null,
+          customer_notes: customerNotes || null,
+          order_items: {
+            create: validatedItems.map(item => ({
+              product_id: item.productId,
+              quantity: item.quantity,
+              unit_price: item.unitPrice,
+              size: item.size || null,
+              color: item.color || null,
+              total_price: item.totalPrice
+            }))
+          }
+        }
+      });
 
-    const orderId = orderResult.insertId;
+      for (const item of validatedItems) {
+        await tx.products.update({
+          where: { id: item.productId },
+          data: { stock_quantity: { decrement: item.quantity } }
+        });
+      }
 
-    // Create order items and update stock
-    for (const item of validatedItems) {
-      // Insert order item
-      await connection.execute(
-        `INSERT INTO order_items (
-          order_id, product_id, quantity, unit_price, size, color, total_price
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          orderId, item.productId, item.quantity, item.unitPrice,
-          item.size || null, item.color || null, item.totalPrice
-        ]
-      );
+      await tx.cart_items.deleteMany({
+        where: { user_id: req.user.id }
+      });
 
-      // Update product stock
-      await connection.execute(
-        'UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?',
-        [item.quantity, item.productId]
-      );
-    }
+      return order;
+    });
 
-    // Clear user's cart
-    await connection.execute(
-      'DELETE FROM cart_items WHERE user_id = ?',
-      [req.user.id]
-    );
-
-    await connection.commit();
-
-    // Generate WhatsApp message
-    const whatsappMessage = await generateWhatsAppMessage(connection, orderId);
+    const whatsappMessage = await generateWhatsAppMessage(orderResult.id);
 
     res.status(201).json({
       success: true,
       message: 'Order placed successfully',
       data: {
-        orderId,
+        orderId: orderResult.id,
         orderNumber,
         totalAmount,
         whatsappMessage,
@@ -142,73 +180,16 @@ router.post('/', async (req, res, next) => {
     });
 
   } catch (error) {
-    await connection.rollback();
+    if (error.message.includes('not found') || error.message.includes('stock')) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+        error: 'ORDER_VALIDATION_ERROR'
+      });
+    }
     next(error);
-  } finally {
-    connection.release();
   }
 });
-
-// Generate WhatsApp message
-const generateWhatsAppMessage = async (connection, orderId) => {
-  const [orders] = await connection.execute(
-    `SELECT 
-      o.order_number, o.total_amount, o.payment_method, o.shipping_address, o.shipping_city,
-      o.customer_notes, o.created_at,
-      u.first_name, u.last_name, u.phone, u.email
-     FROM orders o
-     JOIN users u ON o.user_id = u.id
-     WHERE o.id = ?`,
-    [orderId]
-  );
-
-  const order = orders[0];
-
-  const [orderItems] = await connection.execute(
-    `SELECT 
-      oi.quantity, oi.unit_price, oi.size, oi.color, oi.total_price,
-      p.name as product_name, p.product_code
-     FROM order_items oi
-     JOIN products p ON oi.product_id = p.id
-     WHERE oi.order_id = ?`,
-    [orderId]
-  );
-
-  let message = `🛍️ *New Order from Klova Store*\n\n`;
-  message += `📝 *Order Details:*\n`;
-  message += `Order #: ${order.order_number}\n`;
-  message += `Date: ${new Date(order.created_at).toLocaleDateString()}\n\n`;
-
-  message += `👤 *Customer Information:*\n`;
-  message += `Name: ${order.first_name} ${order.last_name}\n`;
-  message += `Email: ${order.email}\n`;
-  if (order.phone) message += `Phone: ${order.phone}\n`;
-  message += `\n`;
-
-  message += `📦 *Items Ordered:*\n`;
-  orderItems.forEach((item, index) => {
-    message += `${index + 1}. ${item.product_name} (${item.product_code})\n`;
-    if (item.size) message += `   Size: ${item.size}\n`;
-    if (item.color) message += `   Color: ${item.color}\n`;
-    message += `   Qty: ${item.quantity} × Rs. ${item.unit_price} = Rs. ${item.total_price}\n\n`;
-  });
-
-  message += `💰 *Total Amount: Rs. ${order.total_amount}*\n\n`;
-
-  message += `🚚 *Shipping Address:*\n`;
-  message += `${order.shipping_address}\n`;
-  message += `${order.shipping_city}\n\n`;
-
-  message += `💳 *Payment Method:* ${order.payment_method === 'bank_transfer' ? 'Bank Transfer' : 'Cash on Delivery'}\n\n`;
-
-  if (order.customer_notes) {
-    message += `📝 *Customer Notes:* ${order.customer_notes}\n\n`;
-  }
-
-  message += `Please confirm this order. Thank you! 🙏`;
-
-  return message;
-};
 
 // Get user's orders
 router.get('/my-orders', async (req, res, next) => {
@@ -217,45 +198,55 @@ router.get('/my-orders', async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
-    const [orders] = await pool.execute(
-      `SELECT 
-        id, order_number, total_amount, status, payment_method, payment_status,
-        created_at
-       FROM orders 
-       WHERE user_id = ?
-       ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`,
-      [req.user.id, limit, offset]
-    );
+    const [orders, total] = await Promise.all([
+      prisma.orders.findMany({
+        where: { user_id: req.user.id },
+        orderBy: { created_at: 'desc' },
+        take: limit,
+        skip: offset,
+        include: {
+          order_items: {
+            include: {
+              products: {
+                include: {
+                  product_images: {
+                    where: { is_primary: true },
+                    take: 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }),
+      prisma.orders.count({ where: { user_id: req.user.id } })
+    ]);
 
-    // Get order items for each order
-    for (let order of orders) {
-      const [items] = await pool.execute(
-        `SELECT 
-          oi.quantity, oi.unit_price, oi.size, oi.color, oi.total_price,
-          p.name as product_name, p.slug as product_slug,
-          pi.image_url as primary_image
-         FROM order_items oi
-         JOIN products p ON oi.product_id = p.id
-         LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = true
-         WHERE oi.order_id = ?`,
-        [order.id]
-      );
-      order.items = items;
-    }
-
-    // Get total count
-    const [countResult] = await pool.execute(
-      'SELECT COUNT(*) as total FROM orders WHERE user_id = ?',
-      [req.user.id]
-    );
-    const total = countResult[0].total;
+    const formattedOrders = orders.map(order => ({
+      id: order.id,
+      order_number: order.order_number,
+      total_amount: Number(order.total_amount),
+      status: order.status,
+      payment_method: order.payment_method,
+      payment_status: order.payment_status,
+      created_at: order.created_at,
+      items: order.order_items.map(item => ({
+        quantity: item.quantity,
+        unit_price: Number(item.unit_price),
+        size: item.size,
+        color: item.color,
+        total_price: Number(item.total_price),
+        product_name: item.products.name,
+        product_slug: item.products.slug,
+        primary_image: item.products.product_images.length > 0 ? item.products.product_images[0].image_url : null
+      }))
+    }));
 
     res.json({
       success: true,
       message: 'Orders retrieved successfully',
       data: {
-        orders,
+        orders: formattedOrders,
         pagination: {
           currentPage: page,
           totalPages: Math.ceil(total / limit),
@@ -276,17 +267,25 @@ router.get('/:orderId', async (req, res, next) => {
   try {
     const { orderId } = req.params;
 
-    const [orders] = await pool.execute(
-      `SELECT 
-        o.id, o.order_number, o.total_amount, o.status, o.payment_method, o.payment_status,
-        o.shipping_address, o.shipping_city, o.shipping_postal_code, o.customer_notes,
-        o.admin_notes, o.created_at, o.updated_at
-       FROM orders o
-       WHERE o.id = ? AND o.user_id = ?`,
-      [orderId, req.user.id]
-    );
+    const order = await prisma.orders.findFirst({
+      where: { id: parseInt(orderId), user_id: req.user.id },
+      include: {
+        order_items: {
+          include: {
+            products: {
+              include: {
+                product_images: {
+                  where: { is_primary: true },
+                  take: 1
+                }
+              }
+            }
+          }
+        }
+      }
+    });
 
-    if (orders.length === 0) {
+    if (!order) {
       return res.status(404).json({
         success: false,
         message: 'Order not found',
@@ -294,26 +293,38 @@ router.get('/:orderId', async (req, res, next) => {
       });
     }
 
-    const order = orders[0];
-
-    // Get order items
-    const [items] = await pool.execute(
-      `SELECT 
-        oi.quantity, oi.unit_price, oi.size, oi.color, oi.total_price,
-        p.id as product_id, p.name as product_name, p.slug as product_slug, p.product_code,
-        pi.image_url as primary_image
-       FROM order_items oi
-       JOIN products p ON oi.product_id = p.id
-       LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = true
-       WHERE oi.order_id = ?`,
-      [order.id]
-    );
-    order.items = items;
+    const formattedOrder = {
+      id: order.id,
+      order_number: order.order_number,
+      total_amount: Number(order.total_amount),
+      status: order.status,
+      payment_method: order.payment_method,
+      payment_status: order.payment_status,
+      shipping_address: order.shipping_address,
+      shipping_city: order.shipping_city,
+      shipping_postal_code: order.shipping_postal_code,
+      customer_notes: order.customer_notes,
+      admin_notes: order.admin_notes,
+      created_at: order.created_at,
+      updated_at: order.updated_at,
+      items: order.order_items.map(item => ({
+        quantity: item.quantity,
+        unit_price: Number(item.unit_price),
+        size: item.size,
+        color: item.color,
+        total_price: Number(item.total_price),
+        product_id: item.products.id,
+        product_name: item.products.name,
+        product_slug: item.products.slug,
+        product_code: item.products.product_code,
+        primary_image: item.products.product_images.length > 0 ? item.products.product_images[0].image_url : null
+      }))
+    };
 
     res.json({
       success: true,
       message: 'Order retrieved successfully',
-      data: order,
+      data: formattedOrder,
       error: null
     });
 

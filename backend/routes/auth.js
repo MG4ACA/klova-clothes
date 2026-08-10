@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Joi = require('joi');
-const { pool } = require('../config/database');
+const { prisma } = require('../config/prisma');
 const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
@@ -39,12 +39,11 @@ router.post('/register', async (req, res, next) => {
     const { email, password, firstName, lastName, phone, address, city, postalCode } = value;
 
     // Check if user already exists
-    const [existingUsers] = await pool.execute(
-      'SELECT id FROM users WHERE email = ?',
-      [email]
-    );
+    const existingUser = await prisma.users.findUnique({
+      where: { email }
+    });
 
-    if (existingUsers.length > 0) {
+    if (existingUser) {
       return res.status(409).json({
         success: false,
         message: 'User with this email already exists',
@@ -57,15 +56,23 @@ router.post('/register', async (req, res, next) => {
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
     // Create user
-    const [result] = await pool.execute(
-      `INSERT INTO users (email, password, first_name, last_name, phone, address, city, postal_code, role) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'customer')`,
-      [email, hashedPassword, firstName, lastName, phone, address, city, postalCode]
-    );
+    const result = await prisma.users.create({
+      data: {
+        email, 
+        password: hashedPassword, 
+        first_name: firstName, 
+        last_name: lastName, 
+        phone, 
+        address, 
+        city, 
+        postal_code: postalCode, 
+        role: 'customer'
+      }
+    });
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: result.insertId, email, role: 'customer' },
+      { userId: result.id, email, role: 'customer' },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
@@ -75,7 +82,7 @@ router.post('/register', async (req, res, next) => {
       message: 'User registered successfully',
       data: {
         user: {
-          id: result.insertId,
+          id: result.id,
           email,
           firstName,
           lastName,
@@ -106,12 +113,11 @@ router.post('/login', async (req, res, next) => {
     const { email, password } = value;
 
     // Find user
-    const [users] = await pool.execute(
-      'SELECT id, email, password, first_name, last_name, role, is_active FROM users WHERE email = ?',
-      [email]
-    );
+    const user = await prisma.users.findUnique({
+      where: { email }
+    });
 
-    if (users.length === 0) {
+    if (!user) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password',
@@ -119,7 +125,7 @@ router.post('/login', async (req, res, next) => {
       });
     }
 
-    const user = users[0];
+
 
     if (!user.is_active) {
       return res.status(401).json({
@@ -170,13 +176,11 @@ router.post('/login', async (req, res, next) => {
 // Get current user profile
 router.get('/profile', authenticateToken, async (req, res, next) => {
   try {
-    const [users] = await pool.execute(
-      `SELECT id, email, first_name, last_name, phone, address, city, postal_code, role, created_at 
-       FROM users WHERE id = ?`,
-      [req.user.id]
-    );
+    const user = await prisma.users.findUnique({
+      where: { id: req.user.id }
+    });
 
-    if (users.length === 0) {
+    if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found',
@@ -184,7 +188,7 @@ router.get('/profile', authenticateToken, async (req, res, next) => {
       });
     }
 
-    const user = users[0];
+
     res.json({
       success: true,
       message: 'Profile retrieved successfully',
@@ -231,12 +235,17 @@ router.put('/profile', authenticateToken, async (req, res, next) => {
 
     const { firstName, lastName, phone, address, city, postalCode } = value;
 
-    await pool.execute(
-      `UPDATE users 
-       SET first_name = ?, last_name = ?, phone = ?, address = ?, city = ?, postal_code = ?
-       WHERE id = ?`,
-      [firstName, lastName, phone, address, city, postalCode, req.user.id]
-    );
+    await prisma.users.update({
+      where: { id: req.user.id },
+      data: {
+        first_name: firstName, 
+        last_name: lastName, 
+        phone, 
+        address, 
+        city, 
+        postal_code: postalCode
+      }
+    });
 
     res.json({
       success: true,

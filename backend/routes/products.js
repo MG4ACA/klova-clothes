@@ -1,5 +1,5 @@
 const express = require('express');
-const { pool } = require('../config/database');
+const { prisma } = require('../config/prisma');
 const { optionalAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -13,90 +13,74 @@ router.get('/', optionalAuth, async (req, res, next) => {
     const category = req.query.category;
     const search = req.query.search;
     const sortBy = req.query.sortBy || 'created_at';
-    const sortOrder = req.query.sortOrder || 'DESC';
+    const sortOrder = req.query.sortOrder || 'desc';
 
-    let whereClause = 'WHERE p.is_active = true';
-    let queryParams = [];
+    const whereClause = { is_active: true };
 
-    // Category filter
     if (category) {
-      whereClause += ' AND c.slug = ?';
-      queryParams.push(category);
+      whereClause.categories = { slug: category };
     }
 
-    // Search filter
     if (search) {
-      whereClause += ' AND (p.name LIKE ? OR p.description LIKE ? OR p.product_code LIKE ?)';
-      const searchTerm = `%${search}%`;
-      queryParams.push(searchTerm, searchTerm, searchTerm);
+      whereClause.OR = [
+        { name: { contains: search } },
+        { description: { contains: search } },
+        { product_code: { contains: search } }
+      ];
     }
 
-    // Valid sort columns
     const validSortColumns = ['name', 'price', 'created_at'];
-    const validSortOrder = ['ASC', 'DESC'];
     const finalSortBy = validSortColumns.includes(sortBy) ? sortBy : 'created_at';
-    const finalSortOrder = validSortOrder.includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC';
+    const finalSortOrder = sortOrder.toLowerCase() === 'asc' ? 'asc' : 'desc';
 
-    // Get products with pagination
-    const query = `
-      SELECT 
-        p.id, p.product_code, p.name, p.slug, p.description, p.price, p.discount_price,
-        p.stock_quantity, p.is_featured, p.created_at,
-        c.name as category_name, c.slug as category_slug,
-        pi.image_url as primary_image
-      FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
-      LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = true
-      ${whereClause}
-      ORDER BY p.${finalSortBy} ${finalSortOrder}
-      LIMIT ? OFFSET ?
-    `;
+    const [products, total] = await Promise.all([
+      prisma.products.findMany({
+        where: whereClause,
+        orderBy: { [finalSortBy]: finalSortOrder },
+        take: limit,
+        skip: offset,
+        include: {
+          categories: true,
+          product_images: {
+            where: { is_primary: true },
+            take: 1
+          },
+          product_variants: {
+            where: { is_available: true },
+            orderBy: [{ variant_type: 'asc' }, { variant_value: 'asc' }]
+          }
+        }
+      }),
+      prisma.products.count({ where: whereClause })
+    ]);
 
-    queryParams.push(limit, offset);
-    const [products] = await pool.execute(query, queryParams);
-
-    // Get total count for pagination
-    const countQuery = `
-      SELECT COUNT(*) as total
-      FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
-      ${whereClause}
-    `;
-    const countParams = queryParams.slice(0, -2); // Remove limit and offset
-    const [countResult] = await pool.execute(countQuery, countParams);
-    const total = countResult[0].total;
-
-    // Get product variants for each product
-    for (let product of products) {
-      const [variants] = await pool.execute(
-        `SELECT variant_type, variant_value, additional_price, stock_quantity, is_available
-         FROM product_variants 
-         WHERE product_id = ? AND is_available = true
-         ORDER BY variant_type, variant_value`,
-        [product.id]
-      );
-
-      product.variants = {
-        sizes: variants.filter(v => v.variant_type === 'size'),
-        colors: variants.filter(v => v.variant_type === 'color')
+    const formattedProducts = products.map(p => {
+      const sizes = p.product_variants.filter(v => v.variant_type === 'size');
+      const colors = p.product_variants.filter(v => v.variant_type === 'color');
+      
+      return {
+        id: p.id,
+        product_code: p.product_code,
+        name: p.name,
+        slug: p.slug,
+        description: p.description,
+        price: Number(p.price),
+        discount_price: p.discount_price ? Number(p.discount_price) : null,
+        stock_quantity: p.stock_quantity,
+        is_featured: p.is_featured,
+        created_at: p.created_at,
+        category_name: p.categories?.name,
+        category_slug: p.categories?.slug,
+        primary_image: p.product_images.length > 0 ? p.product_images[0].image_url : null,
+        variants: { sizes, colors }
       };
-
-      // Get all images
-      const [images] = await pool.execute(
-        `SELECT image_url, alt_text, is_primary, sort_order
-         FROM product_images 
-         WHERE product_id = ?
-         ORDER BY is_primary DESC, sort_order ASC`,
-        [product.id]
-      );
-      product.images = images;
-    }
+    });
 
     res.json({
       success: true,
       message: 'Products retrieved successfully',
       data: {
-        products,
+        products: formattedProducts,
         pagination: {
           currentPage: page,
           totalPages: Math.ceil(total / limit),
@@ -119,25 +103,38 @@ router.get('/featured', optionalAuth, async (req, res, next) => {
   try {
     const limit = parseInt(req.query.limit) || 8;
 
-    const [products] = await pool.execute(
-      `SELECT 
-        p.id, p.product_code, p.name, p.slug, p.description, p.price, p.discount_price,
-        p.stock_quantity, p.created_at,
-        c.name as category_name, c.slug as category_slug,
-        pi.image_url as primary_image
-       FROM products p
-       LEFT JOIN categories c ON p.category_id = c.id
-       LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = true
-       WHERE p.is_active = true AND p.is_featured = true
-       ORDER BY p.created_at DESC
-       LIMIT ?`,
-      [limit]
-    );
+    const products = await prisma.products.findMany({
+      where: { is_active: true, is_featured: true },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      include: {
+        categories: true,
+        product_images: {
+          where: { is_primary: true },
+          take: 1
+        }
+      }
+    });
+
+    const formattedProducts = products.map(p => ({
+      id: p.id,
+      product_code: p.product_code,
+      name: p.name,
+      slug: p.slug,
+      description: p.description,
+      price: Number(p.price),
+      discount_price: p.discount_price ? Number(p.discount_price) : null,
+      stock_quantity: p.stock_quantity,
+      created_at: p.created_at,
+      category_name: p.categories?.name,
+      category_slug: p.categories?.slug,
+      primary_image: p.product_images.length > 0 ? p.product_images[0].image_url : null
+    }));
 
     res.json({
       success: true,
       message: 'Featured products retrieved successfully',
-      data: products,
+      data: formattedProducts,
       error: null
     });
 
@@ -151,18 +148,21 @@ router.get('/:slug', optionalAuth, async (req, res, next) => {
   try {
     const { slug } = req.params;
 
-    const [products] = await pool.execute(
-      `SELECT 
-        p.id, p.product_code, p.name, p.slug, p.description, p.price, p.discount_price,
-        p.stock_quantity, p.is_featured, p.created_at, p.meta_title, p.meta_description,
-        c.name as category_name, c.slug as category_slug
-       FROM products p
-       LEFT JOIN categories c ON p.category_id = c.id
-       WHERE p.slug = ? AND p.is_active = true`,
-      [slug]
-    );
+    const product = await prisma.products.findFirst({
+      where: { slug, is_active: true },
+      include: {
+        categories: true,
+        product_variants: {
+          where: { is_available: true },
+          orderBy: [{ variant_type: 'asc' }, { variant_value: 'asc' }]
+        },
+        product_images: {
+          orderBy: [{ is_primary: 'desc' }, { sort_order: 'asc' }]
+        }
+      }
+    });
 
-    if (products.length === 0) {
+    if (!product) {
       return res.status(404).json({
         success: false,
         message: 'Product not found',
@@ -170,51 +170,63 @@ router.get('/:slug', optionalAuth, async (req, res, next) => {
       });
     }
 
-    const product = products[0];
+    const sizes = product.product_variants.filter(v => v.variant_type === 'size');
+    const colors = product.product_variants.filter(v => v.variant_type === 'color');
 
-    // Get product variants
-    const [variants] = await pool.execute(
-      `SELECT variant_type, variant_value, additional_price, stock_quantity, is_available
-       FROM product_variants 
-       WHERE product_id = ? AND is_available = true
-       ORDER BY variant_type, variant_value`,
-      [product.id]
-    );
+    // Get related products
+    const relatedProducts = await prisma.products.findMany({
+      where: {
+        category_id: product.category_id,
+        slug: { not: slug },
+        is_active: true
+      },
+      take: 4,
+      include: {
+        product_images: {
+          where: { is_primary: true },
+          take: 1
+        }
+      }
+    });
 
-    product.variants = {
-      sizes: variants.filter(v => v.variant_type === 'size'),
-      colors: variants.filter(v => v.variant_type === 'color')
+    // In a real application, you might want a raw query to order by RAND()
+    // For prisma without raw queries, we fetch a small subset and shuffle them in memory.
+    const shuffledRelated = relatedProducts.sort(() => 0.5 - Math.random());
+
+    const formattedRelated = shuffledRelated.map(p => ({
+      id: p.id,
+      product_code: p.product_code,
+      name: p.name,
+      slug: p.slug,
+      price: Number(p.price),
+      discount_price: p.discount_price ? Number(p.discount_price) : null,
+      primary_image: p.product_images.length > 0 ? p.product_images[0].image_url : null
+    }));
+
+    const formattedProduct = {
+      id: product.id,
+      product_code: product.product_code,
+      name: product.name,
+      slug: product.slug,
+      description: product.description,
+      price: Number(product.price),
+      discount_price: product.discount_price ? Number(product.discount_price) : null,
+      stock_quantity: product.stock_quantity,
+      is_featured: product.is_featured,
+      created_at: product.created_at,
+      meta_title: product.meta_title,
+      meta_description: product.meta_description,
+      category_name: product.categories?.name,
+      category_slug: product.categories?.slug,
+      variants: { sizes, colors },
+      images: product.product_images,
+      relatedProducts: formattedRelated
     };
-
-    // Get product images
-    const [images] = await pool.execute(
-      `SELECT image_url, alt_text, is_primary, sort_order
-       FROM product_images 
-       WHERE product_id = ?
-       ORDER BY is_primary DESC, sort_order ASC`,
-      [product.id]
-    );
-    product.images = images;
-
-    // Get related products (same category, exclude current product)
-    const [relatedProducts] = await pool.execute(
-      `SELECT 
-        p.id, p.product_code, p.name, p.slug, p.price, p.discount_price,
-        pi.image_url as primary_image
-       FROM products p
-       LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = true
-       WHERE p.category_id = (SELECT category_id FROM products WHERE slug = ?) 
-         AND p.slug != ? AND p.is_active = true
-       ORDER BY RAND()
-       LIMIT 4`,
-      [slug, slug]
-    );
-    product.relatedProducts = relatedProducts;
 
     res.json({
       success: true,
       message: 'Product retrieved successfully',
-      data: product,
+      data: formattedProduct,
       error: null
     });
 

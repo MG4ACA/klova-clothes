@@ -1,36 +1,52 @@
 const express = require('express');
 const Joi = require('joi');
-const { pool } = require('../config/database');
+const { prisma } = require('../config/prisma');
 
 const router = express.Router();
 
 // Get user's cart items
 router.get('/', async (req, res, next) => {
   try {
-    const [cartItems] = await pool.execute(
-      `SELECT 
-        ci.id, ci.quantity, ci.size, ci.color,
-        p.id as product_id, p.name, p.slug, p.price, p.discount_price, p.stock_quantity,
-        pi.image_url as primary_image,
-        c.name as category_name
-       FROM cart_items ci
-       JOIN products p ON ci.product_id = p.id
-       LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = true
-       LEFT JOIN categories c ON p.category_id = c.id
-       WHERE ci.user_id = ? AND p.is_active = true
-       ORDER BY ci.created_at DESC`,
-      [req.user.id]
-    );
+    const cartItems = await prisma.cart_items.findMany({
+      where: {
+        user_id: req.user.id,
+        products: { is_active: true }
+      },
+      orderBy: { created_at: 'desc' },
+      include: {
+        products: {
+          include: {
+            product_images: {
+              where: { is_primary: true },
+              take: 1
+            },
+            categories: true
+          }
+        }
+      }
+    });
 
     // Calculate totals
     let subtotal = 0;
     const processedItems = cartItems.map(item => {
-      const price = item.discount_price || item.price;
+      const p = item.products;
+      const price = Number(p.discount_price || p.price);
       const itemTotal = price * item.quantity;
       subtotal += itemTotal;
 
       return {
-        ...item,
+        id: item.id,
+        quantity: item.quantity,
+        size: item.size,
+        color: item.color,
+        product_id: p.id,
+        name: p.name,
+        slug: p.slug,
+        price: Number(p.price),
+        discount_price: p.discount_price ? Number(p.discount_price) : null,
+        stock_quantity: p.stock_quantity,
+        primary_image: p.product_images.length > 0 ? p.product_images[0].image_url : null,
+        category_name: p.categories ? p.categories.name : null,
         unit_price: price,
         total_price: itemTotal
       };
@@ -77,20 +93,18 @@ router.post('/add', async (req, res, next) => {
     const { productId, quantity, size, color } = value;
 
     // Check if product exists and is active
-    const [products] = await pool.execute(
-      'SELECT id, name, stock_quantity FROM products WHERE id = ? AND is_active = true',
-      [productId]
-    );
+    const product = await prisma.products.findFirst({
+      where: { id: productId, is_active: true },
+      select: { id: true, name: true, stock_quantity: true }
+    });
 
-    if (products.length === 0) {
+    if (!product) {
       return res.status(404).json({
         success: false,
         message: 'Product not found',
         error: 'PRODUCT_NOT_FOUND'
       });
     }
-
-    const product = products[0];
 
     // Check stock availability
     if (product.stock_quantity < quantity) {
@@ -102,15 +116,17 @@ router.post('/add', async (req, res, next) => {
     }
 
     // Check if item already exists in cart
-    const [existingItems] = await pool.execute(
-      `SELECT id, quantity FROM cart_items 
-       WHERE user_id = ? AND product_id = ? AND size = ? AND color = ?`,
-      [req.user.id, productId, size || null, color || null]
-    );
+    const existingItem = await prisma.cart_items.findFirst({
+      where: {
+        user_id: req.user.id,
+        product_id: productId,
+        size: size || null,
+        color: color || null
+      }
+    });
 
-    if (existingItems.length > 0) {
+    if (existingItem) {
       // Update existing item
-      const existingItem = existingItems[0];
       const newQuantity = existingItem.quantity + quantity;
 
       if (product.stock_quantity < newQuantity) {
@@ -121,10 +137,10 @@ router.post('/add', async (req, res, next) => {
         });
       }
 
-      await pool.execute(
-        'UPDATE cart_items SET quantity = ? WHERE id = ?',
-        [newQuantity, existingItem.id]
-      );
+      await prisma.cart_items.update({
+        where: { id: existingItem.id },
+        data: { quantity: newQuantity }
+      });
 
       res.json({
         success: true,
@@ -134,11 +150,15 @@ router.post('/add', async (req, res, next) => {
       });
     } else {
       // Add new item
-      await pool.execute(
-        `INSERT INTO cart_items (user_id, product_id, quantity, size, color) 
-         VALUES (?, ?, ?, ?, ?)`,
-        [req.user.id, productId, quantity, size || null, color || null]
-      );
+      await prisma.cart_items.create({
+        data: {
+          user_id: req.user.id,
+          product_id: productId,
+          quantity,
+          size: size || null,
+          color: color || null
+        }
+      });
 
       res.status(201).json({
         success: true,
@@ -173,15 +193,12 @@ router.put('/:itemId', async (req, res, next) => {
     const { quantity } = value;
 
     // Check if cart item exists and belongs to user
-    const [cartItems] = await pool.execute(
-      `SELECT ci.id, ci.product_id, p.stock_quantity
-       FROM cart_items ci
-       JOIN products p ON ci.product_id = p.id
-       WHERE ci.id = ? AND ci.user_id = ?`,
-      [itemId, req.user.id]
-    );
+    const cartItem = await prisma.cart_items.findFirst({
+      where: { id: parseInt(itemId), user_id: req.user.id },
+      include: { products: true }
+    });
 
-    if (cartItems.length === 0) {
+    if (!cartItem) {
       return res.status(404).json({
         success: false,
         message: 'Cart item not found',
@@ -189,10 +206,8 @@ router.put('/:itemId', async (req, res, next) => {
       });
     }
 
-    const cartItem = cartItems[0];
-
     // Check stock availability
-    if (cartItem.stock_quantity < quantity) {
+    if (cartItem.products.stock_quantity < quantity) {
       return res.status(400).json({
         success: false,
         message: 'Insufficient stock available',
@@ -201,10 +216,10 @@ router.put('/:itemId', async (req, res, next) => {
     }
 
     // Update quantity
-    await pool.execute(
-      'UPDATE cart_items SET quantity = ? WHERE id = ?',
-      [quantity, itemId]
-    );
+    await prisma.cart_items.update({
+      where: { id: parseInt(itemId) },
+      data: { quantity }
+    });
 
     res.json({
       success: true,
@@ -223,12 +238,11 @@ router.delete('/:itemId', async (req, res, next) => {
   try {
     const { itemId } = req.params;
 
-    const [result] = await pool.execute(
-      'DELETE FROM cart_items WHERE id = ? AND user_id = ?',
-      [itemId, req.user.id]
-    );
+    const result = await prisma.cart_items.deleteMany({
+      where: { id: parseInt(itemId), user_id: req.user.id }
+    });
 
-    if (result.affectedRows === 0) {
+    if (result.count === 0) {
       return res.status(404).json({
         success: false,
         message: 'Cart item not found',
@@ -251,10 +265,9 @@ router.delete('/:itemId', async (req, res, next) => {
 // Clear entire cart
 router.delete('/', async (req, res, next) => {
   try {
-    await pool.execute(
-      'DELETE FROM cart_items WHERE user_id = ?',
-      [req.user.id]
-    );
+    await prisma.cart_items.deleteMany({
+      where: { user_id: req.user.id }
+    });
 
     res.json({
       success: true,

@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { pool } = require('../config/database');
+const { prisma } = require('../config/prisma');
 
 const authenticateToken = async (req, res, next) => {
   try {
@@ -17,12 +17,12 @@ const authenticateToken = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     // Verify user still exists and is active
-    const [users] = await pool.execute(
-      'SELECT id, email, first_name, last_name, role, is_active FROM users WHERE id = ?',
-      [decoded.userId]
-    );
+    const user = await prisma.users.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, email: true, first_name: true, last_name: true, role: true, is_active: true }
+    });
 
-    if (users.length === 0 || !users[0].is_active) {
+    if (!user || !user.is_active) {
       return res.status(401).json({
         success: false,
         message: 'Invalid or inactive user',
@@ -30,7 +30,7 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    req.user = users[0];
+    req.user = user;
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
@@ -67,13 +67,13 @@ const optionalAuth = async (req, res, next) => {
 
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const [users] = await pool.execute(
-        'SELECT id, email, first_name, last_name, role, is_active FROM users WHERE id = ? AND is_active = true',
-        [decoded.userId]
-      );
+      const user = await prisma.users.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, email: true, first_name: true, last_name: true, role: true, is_active: true }
+      });
 
-      if (users.length > 0) {
-        req.user = users[0];
+      if (user && user.is_active) {
+        req.user = user;
       }
     }
 

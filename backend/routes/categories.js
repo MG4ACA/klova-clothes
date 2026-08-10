@@ -1,17 +1,26 @@
 const express = require('express');
-const { pool } = require('../config/database');
+const { prisma } = require('../config/prisma');
 
 const router = express.Router();
 
 // Get all categories
 router.get('/', async (req, res, next) => {
   try {
-    const [categories] = await pool.execute(
-      `SELECT id, name, slug, description, image_url, sort_order 
-       FROM categories 
-       WHERE is_active = true 
-       ORDER BY sort_order ASC, name ASC`
-    );
+    const categories = await prisma.categories.findMany({
+      where: { is_active: true },
+      orderBy: [
+        { sort_order: 'asc' },
+        { name: 'asc' }
+      ],
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        image_url: true,
+        sort_order: true
+      }
+    });
 
     res.json({
       success: true,
@@ -30,14 +39,18 @@ router.get('/:slug', async (req, res, next) => {
   try {
     const { slug } = req.params;
 
-    const [categories] = await pool.execute(
-      `SELECT id, name, slug, description, image_url 
-       FROM categories 
-       WHERE slug = ? AND is_active = true`,
-      [slug]
-    );
+    const category = await prisma.categories.findFirst({
+      where: { slug, is_active: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        image_url: true
+      }
+    });
 
-    if (categories.length === 0) {
+    if (!category) {
       return res.status(404).json({
         success: false,
         message: 'Category not found',
@@ -48,7 +61,7 @@ router.get('/:slug', async (req, res, next) => {
     res.json({
       success: true,
       message: 'Category retrieved successfully',
-      data: categories[0],
+      data: category,
       error: null
     });
 
