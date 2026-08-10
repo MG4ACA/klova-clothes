@@ -22,15 +22,26 @@
           <h1 class="text-2xl font-bold text-gray-800">Products</h1>
           <p class="text-gray-400 text-sm">{{ pagination.totalItems }} products total</p>
         </div>
-        <button
-          @click="openAddModal"
-          class="bg-primary text-background px-4 py-2 rounded-xl font-semibold hover:bg-secondary transition-colors flex items-center gap-2"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
-          </svg>
-          Add Product
-        </button>
+        <div class="flex items-center gap-3">
+          <button
+            @click="openAddModalWithSample"
+            class="bg-gray-200 text-gray-700 px-4 py-2 rounded-xl font-semibold hover:bg-gray-300 transition-colors flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            </svg>
+            Sample Product
+          </button>
+          <button
+            @click="openAddModal"
+            class="bg-primary text-background px-4 py-2 rounded-xl font-semibold hover:bg-secondary transition-colors flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+            </svg>
+            Add Product
+          </button>
+        </div>
       </div>
 
       <!-- Search -->
@@ -325,6 +336,22 @@ const resetForm = () => {
 const openAddModal = () => {
   editingProduct.value = null
   resetForm()
+  showModal.value = true
+}
+
+const openAddModalWithSample = () => {
+  editingProduct.value = null
+  resetForm()
+  const rand = Math.floor(Math.random() * 1000)
+  Object.assign(form, {
+    productCode: `SAMP${rand}`,
+    name: `Sample Product ${rand}`,
+    description: `This is an auto-generated sample product description for product ${rand}. It features high-quality materials and a comfortable fit.`,
+    categoryId: categories.value.length ? categories.value[0].id : '',
+    price: Math.floor(Math.random() * 4000) + 1000,
+    stockQuantity: Math.floor(Math.random() * 50) + 10,
+    isFeatured: Math.random() > 0.5
+  })
   showModal.value = true
 }
 
