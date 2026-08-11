@@ -19,59 +19,60 @@ const { authenticateToken } = require('./middleware/auth');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3010;
 
-// Security middleware
-app.use(
-  helmet({
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-  }),
-);
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
-});
-app.use(limiter);
-
-// CORS configuration
+// ==========================================
+// 1. CORS CONFIGURATION (MUST BE FIRST)
+// ==========================================
 const allowedOrigins = [
-  process.env.FRONTEND_URL, // Ensure this has NO trailing slash in your .env
+  process.env.FRONTEND_URL,
   'https://offwire.lumicore-labs.com',
-  'https://www.offwire.lumicore-labs.com', // Added www subdomain
+  'https://www.offwire.lumicore-labs.com',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:5175',
   'http://localhost:5176',
 ];
 
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || origin === 'null') {
+      return callback(null, true);
+    }
+    if (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost')) {
+      return callback(null, true);
+    }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log('CORS Blocked Origin:', origin);
+    callback(null, false);
+  },
+  credentials: true,
+};
+
+// Apply CORS to all routes
+app.use(cors(corsOptions));
+
+// Explicitly handle preflight OPTIONS requests across the board
+app.options('*', cors(corsOptions));
+
+// ==========================================
+// 2. SECURITY & RATE LIMITING (AFTER CORS)
+// ==========================================
 app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin, or literal "null" string origin
-      if (!origin || origin === 'null') {
-        return callback(null, true);
-      }
-
-      // Allow localhost in development
-      if (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost')) {
-        return callback(null, true);
-      }
-
-      // Allow exact matches
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      console.log('CORS Blocked Origin:', origin);
-      // To avoid a 500 Error and return a standard CORS failure, pass false instead of throwing an Error:
-      callback(null, false); 
-    },
-    credentials: true,
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
   }),
 );
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: 'Too many requests from this IP, please try again later.',
+});
+app.use(limiter);
 
 // Body parser middleware
 app.use(express.json({ limit: '10mb' }));
