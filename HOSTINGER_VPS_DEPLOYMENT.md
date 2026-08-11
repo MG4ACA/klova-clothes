@@ -111,6 +111,7 @@ sudo mysql_secure_installation
 ```
 
 Follow the prompts to:
+
 - Set root password
 - Remove anonymous users
 - Disallow root login remotely
@@ -127,7 +128,7 @@ sudo mysql -u root -p
 CREATE DATABASE offwire_store CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- Create a dedicated user
-CREATE USER 'offwire_user'@'localhost' IDENTIFIED BY 'your_strong_password_here';
+CREATE USER 'offwire_user'@'localhost' IDENTIFIED BY 'Velou@123';
 
 -- Grant privileges
 GRANT ALL PRIVILEGES ON offwire_store.* TO 'offwire_user'@'localhost';
@@ -259,16 +260,13 @@ npx prisma db push
 ### 5.5 Seed the Database
 
 ```bash
-# Seed categories first
+# 1. Seed categories first
 node seed-categories.js
 
-# Seed admin user
+# 2. Seed admin user
 node seed-admin.js
 
-# Seed product data
-node seed-tshirts.js
-
-# Seed product images
+# 3. Seed sample product images (optional, downloads sample product photos)
 node seed-images.js
 ```
 
@@ -283,8 +281,9 @@ curl http://localhost:3000/api/health
 ```
 
 Expected response:
+
 ```json
-{"success":true,"message":"Klova API is running","timestamp":"..."}
+{ "success": true, "message": "Klova API is running", "timestamp": "..." }
 ```
 
 Press `Ctrl+C` to stop, then manage via PM2.
@@ -384,7 +383,7 @@ Paste this configuration:
 ```nginx
 # Upstream backend (Offwire Express API)
 upstream offwire_backend {
-    server localhost:3000;
+    server localhost:3010;
     keepalive 64;
 }
 
@@ -517,6 +516,7 @@ mysql -u offwire_user -p offwire_store -e "SHOW TABLES;"
 ### 9.4 Test Application in Browser
 
 Visit:
+
 - `https://offwire.lumicore-labs.com`
 
 You should see the Offwire storefront! Try logging in with your seeded admin account.
@@ -556,7 +556,7 @@ echo "🎨 Building frontend..."
 cd frontend
 npm install
 npm run build
-sudo cp -r dist/* /var/www/html/offwire-frontend/
+sudo cp -r frontend/dist/* /var/www/html/offwire-frontend/
 sudo chown -R www-data:www-data /var/www/html/offwire-frontend
 cd ..
 

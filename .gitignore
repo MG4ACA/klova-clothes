@@ -128,8 +128,8 @@ dist
 **/skills-lock.json
 
 # Uploads
-uploads/
-backend/uploads/
+# uploads/
+# backend/uploads/
 
 # Editor directories and files
 .vscode/*
