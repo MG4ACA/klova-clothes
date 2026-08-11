@@ -1,5 +1,7 @@
 <template>
-  <div class="min-h-screen bg-background flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+  <div
+    class="min-h-screen bg-background flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8"
+  >
     <div class="max-w-md w-full">
       <!-- Card -->
       <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
@@ -19,9 +21,21 @@
           </div>
 
           <!-- Error Alert -->
-          <div v-if="errorMsg" class="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+          <div
+            v-if="errorMsg"
+            class="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4 flex-shrink-0"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clip-rule="evenodd"
+              />
             </svg>
             {{ errorMsg }}
           </div>
@@ -29,7 +43,9 @@
           <form @submit.prevent="handleLogin" class="space-y-5">
             <!-- Email -->
             <div>
-              <label for="email" class="block text-sm font-medium text-primary mb-1">Email Address</label>
+              <label for="email" class="block text-sm font-medium text-primary mb-1">
+                Email Address
+              </label>
               <input
                 id="email"
                 v-model="form.email"
@@ -45,7 +61,9 @@
 
             <!-- Password -->
             <div>
-              <label for="password" class="block text-sm font-medium text-primary mb-1">Password</label>
+              <label for="password" class="block text-sm font-medium text-primary mb-1">
+                Password
+              </label>
               <div class="relative">
                 <input
                   id="password"
@@ -62,13 +80,35 @@
                   @click="showPassword = !showPassword"
                   class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-secondary"
                 >
-                  <svg v-if="!showPassword" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <svg
+                    v-if="!showPassword"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
                     <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                    <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
+                    <path
+                      fill-rule="evenodd"
+                      d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
+                      clip-rule="evenodd"
+                    />
                   </svg>
-                  <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clip-rule="evenodd" />
-                    <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.064 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+                  <svg
+                    v-else
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z"
+                      clip-rule="evenodd"
+                    />
+                    <path
+                      d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.064 7 9.542 7 .847 0 1.669-.105 2.454-.303z"
+                    />
                   </svg>
                 </button>
               </div>
@@ -81,9 +121,26 @@
               :disabled="loading"
               class="w-full bg-primary text-background py-3 px-4 rounded-lg font-semibold hover:bg-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              <svg v-if="loading" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <svg
+                v-if="loading"
+                class="animate-spin h-4 w-4"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
               </svg>
               {{ loading ? 'Signing In...' : 'Sign In' }}
             </button>
@@ -93,7 +150,10 @@
           <div class="mt-6 text-center">
             <p class="text-secondary text-sm">
               Don't have an account?
-              <router-link to="/register" class="text-accent font-semibold hover:text-secondary transition-colors">
+              <router-link
+                to="/register"
+                class="text-accent font-semibold hover:text-secondary transition-colors"
+              >
                 Create one
               </router-link>
             </p>
@@ -103,9 +163,21 @@
 
       <!-- Back to shop -->
       <div class="text-center mt-4">
-        <router-link to="/" class="text-secondary text-sm hover:text-primary transition-colors inline-flex items-center gap-1">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" />
+        <router-link
+          to="/"
+          class="text-secondary text-sm hover:text-primary transition-colors inline-flex items-center gap-1"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z"
+              clip-rule="evenodd"
+            />
           </svg>
           Back to Shop
         </router-link>
@@ -115,70 +187,70 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
+import { reactive, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useAuthStore } from '../stores/auth';
 
-const router = useRouter()
-const route = useRoute()
-const authStore = useAuthStore()
+const router = useRouter();
+const route = useRoute();
+const authStore = useAuthStore();
 
-const loading = ref(false)
-const showPassword = ref(false)
-const errorMsg = ref('')
+const loading = ref(false);
+const showPassword = ref(false);
+const errorMsg = ref('');
 
 const form = reactive({
   email: '',
-  password: ''
-})
+  password: '',
+});
 
 const errors = reactive({
   email: '',
-  password: ''
-})
+  password: '',
+});
 
 const validate = () => {
-  errors.email = ''
-  errors.password = ''
-  let valid = true
+  errors.email = '';
+  errors.password = '';
+  let valid = true;
 
   if (!form.email) {
-    errors.email = 'Email is required'
-    valid = false
+    errors.email = 'Email is required';
+    valid = false;
   } else if (!/\S+@\S+\.\S+/.test(form.email)) {
-    errors.email = 'Enter a valid email address'
-    valid = false
+    errors.email = 'Enter a valid email address';
+    valid = false;
   }
 
   if (!form.password) {
-    errors.password = 'Password is required'
-    valid = false
-  } else if (form.password.length < 6) {
-    errors.password = 'Password must be at least 6 characters'
-    valid = false
+    errors.password = 'Password is required';
+    valid = false;
+  } else if (form.password.length < 3) {
+    errors.password = 'Password must be at least 6 characters';
+    valid = false;
   }
 
-  return valid
-}
+  return valid;
+};
 
 const handleLogin = async () => {
-  if (!validate()) return
+  if (!validate()) return;
 
-  loading.value = true
-  errorMsg.value = ''
+  loading.value = true;
+  errorMsg.value = '';
 
   const result = await authStore.login({
     email: form.email,
-    password: form.password
-  })
+    password: form.password,
+  });
 
-  loading.value = false
+  loading.value = false;
 
   if (result.success) {
-    const redirect = route.query.redirect || '/'
-    router.push(redirect)
+    const redirect = route.query.redirect || '/';
+    router.push(redirect);
   } else {
-    errorMsg.value = result.message || 'Login failed. Please check your credentials.'
+    errorMsg.value = result.message || 'Login failed. Please check your credentials.';
   }
-}
+};
 </script>
