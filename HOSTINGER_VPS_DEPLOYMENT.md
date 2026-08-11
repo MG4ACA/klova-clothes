@@ -1,43 +1,44 @@
 # 🚀 Hostinger VPS Deployment Guide
 
-## Pharmacy POS System (MEVN Stack)
+## Offwire Clothing Store (MEVN Stack)
 
-This guide will walk you through deploying your Pharmacy POS application (Vue.js frontend + Express.js backend) on a Hostinger VPS with the MEVN stack template.
+This guide walks you through deploying the **Offwire** clothing store application (Vue.js frontend + Express.js/Prisma backend with MySQL) on a Hostinger VPS.
 
 ---
 
 ## 📋 Prerequisites
 
-- Hostinger VPS with Ubuntu 22.04 + MEVN Stack template installed
+- Hostinger VPS with **Ubuntu 22.04** (MEVN Stack template recommended)
 - SSH access to your VPS
 - Your VPS IP address
-- Domain name (optional, but recommended)
+- Domain name: `offwire.lumicore-labs.com`
+- GitHub repository: `https://github.com/MG4ACA/klova.git`
 
 ---
 
 ## 🎯 Architecture Overview
 
 ```
-┌─────────────────────────────────────────┐
-│         Hostinger VPS Server            │
-│                                         │
-│  ┌────────────────────────────────┐    │
-│  │  Nginx (Reverse Proxy)         │    │
-│  │  Port 80/443                   │    │
-│  └──────────┬─────────────────────┘    │
-│             │                           │
-│  ┌──────────▼──────────┐  ┌──────────┐ │
-│  │  Vue.js Frontend    │  │  Backend │ │
-│  │  (Static Files)     │  │  API     │ │
-│  │                     │  │  Port    │ │
-│  │                     │  │  3000    │ │
-│  └─────────────────────┘  └────┬─────┘ │
-│                                 │       │
-│                          ┌──────▼─────┐ │
-│                          │   MySQL    │ │
-│                          │  Database  │ │
-│                          └────────────┘ │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│            Hostinger VPS Server             │
+│                                             │
+│  ┌──────────────────────────────────────┐   │
+│  │  Nginx (Reverse Proxy)               │   │
+│  │  Port 80 / 443                       │   │
+│  └───────────────┬──────────────────────┘   │
+│                  │                           │
+│  ┌───────────────▼──────────┐  ┌──────────┐ │
+│  │  Vue.js Frontend         │  │ Express  │ │
+│  │  (Static Files)          │  │ Backend  │ │
+│  │  /var/www/html/          │  │ Port 3000│ │
+│  │   offwire-frontend       │  └────┬─────┘ │
+│  └──────────────────────────┘       │       │
+│                                ┌────▼─────┐ │
+│                                │  MySQL   │ │
+│                                │ offwire_ │ │
+│                                │  store   │ │
+│                                └──────────┘ │
+└─────────────────────────────────────────────┘
 ```
 
 ---
@@ -48,7 +49,7 @@ This guide will walk you through deploying your Pharmacy POS application (Vue.js
 # Connect via SSH
 ssh root@your_vps_ip
 
-# Or if you have a username
+# Or with a specific user
 ssh username@your_vps_ip
 ```
 
@@ -68,27 +69,35 @@ sudo apt update && sudo apt upgrade -y
 # Install Git
 sudo apt install git -y
 
+# Install Node.js 20.x (LTS)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Verify versions
+node -v
+npm -v
+
 # Install PM2 (Process Manager)
 sudo npm install -g pm2
 
-# Install Nginx (if not already installed)
+# Install Nginx
 sudo apt install nginx -y
 
-# Install MySQL client (if needed)
+# Install MySQL Server
 sudo apt install mysql-server -y
-sudo apt install mysql-client -y
-sudo systemctl status mysql
 sudo systemctl start mysql
+sudo systemctl enable mysql
+sudo systemctl status mysql
 ```
 
 ### 2.3 Configure Firewall
 
 ```bash
-# Allow SSH, HTTP, and HTTPS
 sudo ufw allow 22
 sudo ufw allow 80
 sudo ufw allow 443
 sudo ufw enable
+sudo ufw status
 ```
 
 ---
@@ -102,7 +111,6 @@ sudo mysql_secure_installation
 ```
 
 Follow the prompts to:
-
 - Set root password
 - Remove anonymous users
 - Disallow root login remotely
@@ -111,80 +119,74 @@ Follow the prompts to:
 ### 3.2 Create Database and User
 
 ```bash
-# Login to MySQL
 sudo mysql -u root -p
-
-# Run these SQL commands:
 ```
 
 ```sql
--- Create database
-CREATE DATABASE ape_news;
+-- Create the Offwire database
+CREATE DATABASE offwire_store CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- Create user (replace 'your_password' with a strong password)
-CREATE USER 'ape_news_user'@'localhost' IDENTIFIED BY 'Velou@123';  pw - Velou@123
+-- Create a dedicated user
+CREATE USER 'offwire_user'@'localhost' IDENTIFIED BY 'your_strong_password_here';
 
 -- Grant privileges
-GRANT ALL PRIVILEGES ON ape_news.* TO 'ape_news_user'@'localhost';
+GRANT ALL PRIVILEGES ON offwire_store.* TO 'offwire_user'@'localhost';
 
--- Flush privileges
+-- Apply changes
 FLUSH PRIVILEGES;
 
--- Exit MySQL
 EXIT;
 ```
 
 ---
 
-## 📥 Step 4: Deploy Your Application
+## 📥 Step 4: Clone the Repository
 
 ### 4.1 Create Application Directory
 
 ```bash
-# Create directory for your app
-sudo mkdir -p /var/www/ape-news
-cd /var/www/ape-news
+sudo mkdir -p /var/www/offwire
+sudo chown -R $USER:$USER /var/www/offwire
+cd /var/www/offwire
 ```
 
-### 4.2 Clone Your Repository
+### 4.2 Clone from GitHub
 
 ```bash
-# If your code is on GitHub
-sudo git clone https://github.com/MG4ACA/ape-news-backend.git
-
-
-# Or upload your code using SCP from your local machine:
-# scp -r /path/to/pharmacy-standalone-pos root@your_vps_ip:/var/www/ape-news
+git clone https://github.com/MG4ACA/klova.git .
 ```
 
-### 4.3 Set Correct Permissions
+> **Note:** The `.` clones into the current directory.
+
+### 4.3 Verify Structure
 
 ```bash
-# Change ownership
-sudo chown -R $USER:$USER /var/www/ape-news
-
-# Set permissions
-sudo chmod -R 755 /var/www/ape-news
+ls -la
+# Expected: backend/  frontend/  package.json  README.md  ...
 ```
 
----
+### 4.4 Pull Latest Updates (when needed)
 
-cd ape-news-backend
+```bash
+cd /var/www/offwire
 
 git fetch --all
 git branch
-git checkout 'your_branch'
-git pull origin dev
+# git checkout main  (or your target branch)
+git pull origin main
 
-if errors occur try below
-git reset --hard
+# If conflicts occur:
+# git reset --hard origin/main
+```
+
+---
 
 ## 🔨 Step 5: Set Up Backend
 
 ### 5.1 Navigate to Backend Directory
 
 ```bash
-cd /var/www/ape-news/ape-news-backend
+cd /var/www/offwire/backend
 ```
 
 ### 5.2 Install Dependencies
@@ -196,75 +198,109 @@ npm install --production
 ### 5.3 Configure Environment Variables
 
 ```bash
-# Create .env file
 nano .env
 ```
 
-Add the following configuration:
+Paste the following and fill in your values:
 
 ```env
-# Database Configuration
-DB_HOST=localhost
-DB_PORT=3306
-DB_NAME=ape_news
-DB_USER=ape_news_user
-DB_PASSWORD=Velou@123
-
 # Application
 NODE_ENV=production
 PORT=3000
-HOST=0.0.0.0
 
-# JWT Secret (generate a secure random string)
-JWT_SECRET=your_super_secret_jwt_key_here_change_this
+# Database (Prisma uses DATABASE_URL)
+DATABASE_URL="mysql://offwire_user:your_strong_password_here@localhost:3306/offwire_store"
 
-# JWT Expiration
-JWT_EXPIRES_IN=24h
+# Keep individual vars for any direct mysql2 usage (optional fallback)
+DB_HOST=localhost
+DB_USER=offwire_user
+DB_PASSWORD=your_strong_password_here
+DB_NAME=offwire_store
 
-# CORS Configuration (comma-separated list of allowed origins)
-ALLOWED_ORIGINS=http://your_vps_ip,https://yourdomain.com
+# JWT Configuration
+JWT_SECRET=your_super_secret_jwt_key_here_make_it_long_and_complex
+JWT_EXPIRES_IN=7d
+
+# Frontend URL
+FRONTEND_URL=https://offwire.lumicore-labs.com
+
+# WhatsApp Configuration
+WHATSAPP_NUMBER=94705045099
+WHATSAPP_API_URL=https://wa.me/
+
+# File Upload Configuration
+MAX_FILE_SIZE=5242880
+ALLOWED_FILE_TYPES=image/jpeg,image/jpg,image/png,image/webp
+
+# Admin Defaults
+ADMIN_EMAIL=admin@offwire.com
+ADMIN_PASSWORD=change_this_immediately
 ```
 
-**To generate a secure JWT secret:**
+**Generate a secure JWT secret:**
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
 
-### 5.4 Initialize Database
+### 5.4 Generate Prisma Client & Push Schema
 
 ```bash
-# Create database tables and seed
-npm run db:create
+# Generate the Prisma client
+npx prisma generate
 
-
-# If you have product CSV data
-npm run db:seed:products
+# Push schema to the MySQL database (creates all tables)
+npx prisma db push
 ```
 
-### 5.5 Test Backend Locally
+> ⚠️ `prisma db push` will create all tables defined in `schema.prisma` without running migrations.
+> Use `npx prisma migrate deploy` if you have a `migrations/` folder committed.
+
+### 5.5 Seed the Database
 
 ```bash
-# Test if backend works
-npm start
+# Seed categories first
+node seed-categories.js
 
-# In another terminal, test the API
+# Seed admin user
+node seed-admin.js
+
+# Seed product data
+node seed-tshirts.js
+
+# Seed product images
+node seed-images.js
+```
+
+### 5.6 Test Backend Locally
+
+```bash
+# Quick test run
+node server.js
+
+# In another SSH session, test the health endpoint
 curl http://localhost:3000/api/health
 ```
 
-If successful, you should see a response. Press `Ctrl+C` to stop.
+Expected response:
+```json
+{"success":true,"message":"Klova API is running","timestamp":"..."}
+```
 
-### 5.6 Set Up PM2 for Backend
+Press `Ctrl+C` to stop, then manage via PM2.
+
+### 5.7 Start Backend with PM2
 
 ```bash
-# Start backend with PM2
-pm2 start src/index.js --name pharmacy-pos-backend
+# Start backend
+pm2 start server.js --name offwire-backend
 
-# Save PM2 configuration
+# Save PM2 process list
 pm2 save
 
-# Set PM2 to start on boot
+# Enable PM2 to start on system boot
 pm2 startup
+# Run the command it prints (e.g., sudo env PATH=... pm2 startup systemd ...)
 
 # Check status
 pm2 status
@@ -273,17 +309,16 @@ pm2 status
 **Useful PM2 Commands:**
 
 ```bash
-# View logs
-pm2 logs ape-news-backend
+# View live logs
+pm2 logs offwire-backend
 
-# Restart app
-pm2 restart ape-news-backend
-pm2 restart pharmacy-pos-backend
+# Restart
+pm2 restart offwire-backend
 
-# Stop app
-pm2 stop ape-news-backend
+# Stop
+pm2 stop offwire-backend
 
-# Monitor
+# Monitor resources
 pm2 monit
 ```
 
@@ -293,108 +328,93 @@ pm2 monit
 
 ### 6.1 Navigate to Frontend Directory
 
-## clone frotend repo then
-
 ```bash
-cd /var/www/ape-news/ape-news-frontend
+cd /var/www/offwire/frontend
 ```
 
-### 6.2 Configure API Endpoint
-
-create environment file:
+### 6.2 Create Production Environment File
 
 ```bash
 nano .env.production
 ```
 
 ```env
-VITE_API_BASE_URL=http://your_vps_ip/api
-```
+# Point to your production domain
+VITE_API_BASE_URL=https://offwire.lumicore-labs.com
 
-or Update the frontend to point to your backend API:
-
-```bash
-nano src/api/client.js
-```
-
-Update the base URL:
-
-```javascript
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://your_vps_ip/api';
+# WhatsApp Business Number
+VITE_WHATSAPP_NUMBER=94705045099
 ```
 
 ### 6.3 Install Dependencies and Build
 
 ```bash
-# Install dependencies
 npm install
-
-# Build for production
 npm run build
 ```
 
-This creates a `dist` folder with optimized static files.
+This creates a `dist/` folder with all optimized static files.
 
-### 6.4 Move Build to Nginx Directory
+### 6.4 Deploy Build to Nginx Directory
 
 ```bash
-# Create directory for frontend
-sudo mkdir -p /var/www/ape-news/frontend
+# Create the directory for the frontend
+sudo mkdir -p /var/www/html/offwire-frontend
 
 # Copy built files
-sudo cp -r dist/* /var/www/hasal_products/frontend/
+sudo cp -r dist/* /var/www/html/offwire-frontend/
 
-# Set permissions
-sudo chown -R www-data:www-data /var/www/ape-news/frontend
-sudo chmod -R 755 /var/www/ape-news/frontend
+# Set correct permissions
+sudo chown -R www-data:www-data /var/www/html/offwire-frontend
+sudo chmod -R 755 /var/www/html/offwire-frontend
 ```
 
 ---
 
 ## 🌐 Step 7: Configure Nginx
 
-### 7.1 Create Nginx Configuration
+### 7.1 Create Nginx Site Configuration
 
 ```bash
-sudo nano /etc/nginx/sites-available/ape-news
+sudo nano /etc/nginx/sites-available/offwire
 ```
 
-Add this configuration:
+Paste this configuration:
 
 ```nginx
-# Upstream backend
-upstream pharmacy_backend {
-    server localhost:8080;
+# Upstream backend (Offwire Express API)
+upstream offwire_backend {
+    server localhost:3000;
     keepalive 64;
 }
 
 server {
     listen 80;
- server_name weadit.com www.weadit.com;
+    server_name offwire.lumicore-labs.com www.offwire.lumicore-labs.com;
+
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
 
-    # Frontend - Serve Vue.js app
+    # Frontend — Serve Vue.js SPA
     location / {
-        root /var/www/html/adit-frontend;
+        root /var/www/html/offwire-frontend;
         index index.html;
         try_files $uri $uri/ /index.html;
 
-        # Cache static assets
-        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        # Cache static assets aggressively
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|webp)$ {
             expires 1y;
             add_header Cache-Control "public, immutable";
         }
     }
 
-    # Backend API - Proxy to Express.js
+    # Backend API — Proxy to Express.js on port 3000
     location /api/ {
-        proxy_pass http://pharmacy_backend/api/;
+        proxy_pass http://offwire_backend/api/;
         proxy_http_version 1.1;
 
-        # Headers
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
@@ -402,16 +422,22 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Timeouts
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
-
-        # Disable cache for API
         proxy_cache_bypass $http_upgrade;
     }
 
-   
+    # Uploaded product images — served directly from backend uploads folder
+    location /uploads/ {
+        alias /var/www/offwire/backend/uploads/;
+        expires 30d;
+        add_header Cache-Control "public";
+    }
+
+    # Nginx logs
+    access_log /var/log/nginx/offwire-access.log;
+    error_log  /var/log/nginx/offwire-error.log;
 }
 ```
 
@@ -419,24 +445,22 @@ server {
 
 ```bash
 # Create symbolic link
-sudo ln -s /etc/nginx/sites-available/ape-news /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/offwire /etc/nginx/sites-enabled/
 
 # Remove default site (optional)
-sudo rm /etc/nginx/sites-enabled/default
+sudo rm -f /etc/nginx/sites-enabled/default
 
-# Test Nginx configuration
+# Test configuration
 sudo nginx -t
 
-# Restart Nginx
-sudo systemctl restart nginx
-
-# Enable Nginx on boot
+# Reload Nginx
+sudo systemctl reload nginx
 sudo systemctl enable nginx
 ```
 
 ---
 
-## 🔒 Step 8: Set Up SSL (Optional but Recommended)
+## 🔒 Step 8: Set Up SSL with Let's Encrypt
 
 ### 8.1 Install Certbot
 
@@ -446,45 +470,16 @@ sudo apt install certbot python3-certbot-nginx -y
 
 ### 8.2 Obtain SSL Certificate
 
-**Note:** You need a domain name pointed to your VPS IP for this step.
-
 ```bash
-# Replace with your domain
-sudo certbot --nginx -d apenews.lumicore-labs.com -d www.apenews.lumicore-labs.com
+sudo certbot --nginx -d offwire.lumicore-labs.com -d www.offwire.lumicore-labs.com
 ```
 
-Certbot will:
-
-- Obtain certificate
-- Automatically configure Nginx
-- Set up automatic renewal
+Certbot will auto-configure Nginx for HTTPS and set up auto-renewal.
 
 ### 8.3 Test Auto-Renewal
 
 ```bash
 sudo certbot renew --dry-run
-```
-
-### 8.4 Update Frontend API URL
-
-After SSL is set up, update your frontend API URL to use HTTPS:
-
-```bash
-nano /var/www/ape-news/src/api/client.js
-```
-
-Change to:
-
-```javascript
-const API_BASE_URL = 'https://lumicore.trustyou-go.com/api';
-```
-
-Rebuild and redeploy:
-
-```bash
-cd /var/www/ape-news
-npm run build
-sudo cp -r dist/* /var/www/ape-news/frontend/
 ```
 
 ---
@@ -494,118 +489,121 @@ sudo cp -r dist/* /var/www/ape-news/frontend/
 ### 9.1 Check Backend
 
 ```bash
-# Check PM2 status
+# PM2 status
 pm2 status
 
-# Check backend logs
-pm2 logs ape-news-backend
+# Live logs
+pm2 logs offwire-backend
 
-# Test API directly
+# Health check
 curl http://localhost:3000/api/health
 ```
 
 ### 9.2 Check Nginx
 
 ```bash
-# Check Nginx status
 sudo systemctl status nginx
-
-# Check Nginx logs
-sudo tail -f /var/log/nginx/ape-news-error.log
+sudo tail -f /var/log/nginx/offwire-error.log
+sudo tail -f /var/log/nginx/offwire-access.log
 ```
 
-### 9.3 Test Application
+### 9.3 Check MySQL
 
-Open your browser and visit:
+```bash
+sudo systemctl status mysql
+mysql -u offwire_user -p offwire_store -e "SHOW TABLES;"
+```
 
-- `http://your_vps_ip` (or `https://yourdomain.com`)
+### 9.4 Test Application in Browser
 
-You should see your Pharmacy POS login page!
+Visit:
+- `https://offwire.lumicore-labs.com`
+
+You should see the Offwire storefront! Try logging in with your seeded admin account.
 
 ---
 
-## 🔄 Step 10: Deployment Script (For Updates)
+## 🔄 Step 10: Automated Deployment Script (For Updates)
 
-Create a deployment script for easy updates:
+Create a reusable deploy script:
 
 ```bash
-nano /var/www/ape-news/deploy.sh
+nano /var/www/offwire/deploy.sh
 ```
 
 ```bash
 #!/bin/bash
+set -e
 
-echo "🚀 Starting deployment..."
+echo "🚀 Starting Offwire deployment..."
+cd /var/www/offwire
 
-# Navigate to project directory
-cd /var/www/ape-news
-
-# Pull latest changes (if using Git)
-echo "📥 Pulling latest changes..."
+# Pull latest code
+echo "📥 Pulling latest changes from GitHub..."
 git pull origin main
 
-# Backend deployment
-echo "🔨 Deploying backend..."
-cd backend-project
+# ── Backend ──────────────────────────────────────
+echo "🔨 Updating backend..."
+cd backend
 npm install --production
-pm2 restart ape-news-backend
-
-# Frontend deployment
-echo "🎨 Deploying frontend..."
+npx prisma generate
+npx prisma db push   # or: npx prisma migrate deploy
+pm2 restart offwire-backend
 cd ..
+
+# ── Frontend ─────────────────────────────────────
+echo "🎨 Building frontend..."
+cd frontend
 npm install
 npm run build
-sudo cp -r dist/* /var/www/ape-news/frontend/
+sudo cp -r dist/* /var/www/html/offwire-frontend/
+sudo chown -R www-data:www-data /var/www/html/offwire-frontend
+cd ..
 
-# Restart Nginx
-echo "🌐 Restarting Nginx..."
-sudo systemctl restart nginx
+# ── Nginx ─────────────────────────────────────────
+echo "🌐 Reloading Nginx..."
+sudo systemctl reload nginx
 
-echo "✅ Deployment complete!"
+echo "✅ Offwire deployment complete!"
+pm2 status
 ```
 
 Make it executable:
 
 ```bash
-chmod +x /var/www/ape-news/deploy.sh
+chmod +x /var/www/offwire/deploy.sh
 ```
 
-Run deployment:
+Run a deployment:
 
 ```bash
-./deploy.sh
+/var/www/offwire/deploy.sh
 ```
 
 ---
 
 ## 🛠️ Maintenance Commands
 
-### Check Application Status
+### Check Service Status
 
 ```bash
-# Check all services
 pm2 status
 sudo systemctl status nginx
 sudo systemctl status mysql
 
-# Check disk space
-df -h
-
-# Check memory usage
-free -m
+df -h       # Disk space
+free -m     # Memory usage
 ```
 
 ### View Logs
 
 ```bash
 # Backend logs
-pm2 logs ape-news-backend
+pm2 logs offwire-backend
 
-# Nginx access logs
-sudo tail -f /var/log/nginx/ape-news-access.log
-
-# Nginx error logs
-sudo tail -f /var/log/nginx/ape-news-error.log
+# Nginx logs
+sudo tail -f /var/log/nginx/offwire-access.log
+sudo tail -f /var/log/nginx/offwire-error.log
 
 # MySQL logs
 sudo tail -f /var/log/mysql/error.log
@@ -614,32 +612,35 @@ sudo tail -f /var/log/mysql/error.log
 ### Backup Database
 
 ```bash
-# Create backup directory
 mkdir -p ~/backups
 
-# Backup database
-mysqldump -u ape_news_user -p ape_news > ~/backups/ape_news_$(date +%Y%m%d_%H%M%S).sql
+# Manual backup
+mysqldump -u offwire_user -p offwire_store > ~/backups/offwire_store_$(date +%Y%m%d_%H%M%S).sql
+```
 
-# Create automated backup script
-nano ~/backup-db.sh
+**Automated daily backup (2 AM):**
+
+```bash
+nano ~/backup-offwire.sh
 ```
 
 ```bash
 #!/bin/bash
 BACKUP_DIR=~/backups
 mkdir -p $BACKUP_DIR
-mysqldump -u ape_news_user -p'your_password' ape_news > $BACKUP_DIR/ape_news_$(date +%Y%m%d_%H%M%S).sql
+mysqldump -u offwire_user -p'your_strong_password_here' offwire_store \
+  > $BACKUP_DIR/offwire_store_$(date +%Y%m%d_%H%M%S).sql
 
-# Keep only last 7 days of backups
-find $BACKUP_DIR -name "ape_news_*.sql" -mtime +7 -delete
+# Keep only last 7 days
+find $BACKUP_DIR -name "offwire_store_*.sql" -mtime +7 -delete
 ```
 
 ```bash
-chmod +x ~/backup-db.sh
+chmod +x ~/backup-offwire.sh
 
-# Add to crontab for daily backups at 2 AM
+# Schedule via crontab
 crontab -e
-# Add: 0 2 * * * /home/username/backup-db.sh
+# Add: 0 2 * * * /root/backup-offwire.sh
 ```
 
 ---
@@ -649,168 +650,85 @@ crontab -e
 ### Backend Not Starting
 
 ```bash
-# Check logs
-pm2 logs ape-news-backend
+pm2 logs offwire-backend
 
-# Common issues:
-# 1. Port 3000 already in use
+# Port already in use?
 sudo lsof -i :3000
 sudo kill -9 <PID>
 
-# 2. Database connection failed
-# Check .env file and MySQL credentials
-mysql -u ape_news_user -p ape_news
+# Prisma client not generated?
+cd /var/www/offwire/backend
+npx prisma generate
+pm2 restart offwire-backend
+
+# Test DB connection
+mysql -u offwire_user -p offwire_store
 ```
 
 ### Frontend Not Loading
 
 ```bash
-# Check Nginx error logs
-sudo tail -f /var/log/nginx/ape-news-error.log
+sudo tail -f /var/log/nginx/offwire-error.log
 
 # Verify files exist
-ls -la /var/www/ape-news/frontend
+ls -la /var/www/html/offwire-frontend
 
-# Test Nginx configuration
+# Validate Nginx config
 sudo nginx -t
-
-# Restart Nginx
-sudo systemctl restart nginx
+sudo systemctl reload nginx
 ```
 
 ### 502 Bad Gateway
 
 ```bash
-# Backend is not running
+# Backend not running?
 pm2 status
-pm2 restart ape-news-backend
+pm2 restart offwire-backend
 
-# Check backend is listening on port 3000
+# Check port 3000
 sudo netstat -tlnp | grep 3000
 ```
 
 ### Database Connection Issues
 
 ```bash
-# Test MySQL connection
-mysql -u ape_news_user -p ape_news
+# Test connection
+mysql -u offwire_user -p offwire_store
 
-# Check MySQL is running
+# Is MySQL running?
 sudo systemctl status mysql
-
-# Restart MySQL
 sudo systemctl restart mysql
 
-# Check backend .env file
-cat backend-project/.env
+# Check DATABASE_URL in .env
+cat /var/www/offwire/backend/.env | grep DATABASE_URL
 ```
 
----
+### CORS Errors in Browser
 
-## 📊 Monitoring Setup (Optional)
-
-### Install Monitoring Tools
+Make sure `FRONTEND_URL` in `/var/www/offwire/backend/.env` is set to `https://offwire.lumicore-labs.com`, then restart:
 
 ```bash
-# Install htop for resource monitoring
-sudo apt install htop -y
-
-# Use PM2 monitoring
-pm2 install pm2-server-monit
+pm2 restart offwire-backend
 ```
-
-### Set Up PM2 Web Dashboard
-
-```bash
-# Install PM2 web interface
-pm2 install pm2-web
-
-# Access at: http://your_vps_ip:9615
-```
-
----
-
-## 🎯 Performance Optimization
-
-### Enable Gzip Compression in Nginx
-
-Edit `/etc/nginx/nginx.conf`:
-
-```bash
-sudo nano /etc/nginx/nginx.conf
-```
-
-Add inside `http` block:
-
-```nginx
-gzip on;
-gzip_vary on;
-gzip_proxied any;
-gzip_comp_level 6;
-gzip_types text/plain text/css text/xml text/javascript application/json application/javascript application/xml+rss application/rss+xml font/truetype font/opentype application/vnd.ms-fontobject image/svg+xml;
-```
-
-### Configure Node.js for Production
-
-In PM2 configuration:
-
-```bash
-pm2 start src/index.js --name ape-news-backend -i max --node-args="--max-old-space-size=1024"
-```
-
----
-
-## 📚 Additional Resources
-
-- [Hostinger VPS Documentation](https://www.hostinger.com/tutorials/vps)
-- [PM2 Documentation](https://pm2.keymetrics.io/docs/usage/quick-start/)
-- [Nginx Documentation](https://nginx.org/en/docs/)
-- [Let's Encrypt Certbot](https://certbot.eff.org/)
-
----
-
-## 📞 Support
-
-If you encounter issues:
-
-1. Check logs first (`pm2 logs`, nginx logs)
-2. Verify all services are running
-3. Check firewall settings
-4. Review configuration files
-5. Restart services in order: MySQL → Backend → Nginx
-
----
-
-## 🎉 Congratulations!
-
-Your Pharmacy POS System is now live on Hostinger VPS!
-
-**Access your application at:**
-
-- 🌐 Frontend: `http://your_vps_ip` or `https://yourdomain.com`
-- 🔌 Backend API: `http://your_vps_ip/api` or `https://yourdomain.com/api`
-
-**Default Login (if using seed data):**
-
-- Username: `admin`
-- Password: Check your seed file
 
 ---
 
 ## 📝 Post-Deployment Checklist
 
-- [ ] Backend is running via PM2
-- [ ] Database is created and seeded
-- [ ] Frontend is built and served by Nginx
-- [ ] API endpoints are accessible
-- [ ] Application login works
-- [ ] SSL certificate is installed (if using domain)
-- [ ] Firewall is configured
-- [ ] Backups are automated
-- [ ] Monitoring is set up
-- [ ] Deployment script is ready
+- [ ] Backend is running via PM2 (`pm2 status`)
+- [ ] MySQL database `offwire_store` is created with all tables
+- [ ] Prisma client generated (`npx prisma generate`)
+- [ ] Database seeded
+- [ ] Frontend built with `VITE_API_BASE_URL=https://offwire.lumicore-labs.com`
+- [ ] Frontend served by Nginx at `/var/www/html/offwire-frontend`
+- [ ] Nginx server_name set to `offwire.lumicore-labs.com`
+- [ ] SSL certificate installed with Certbot for `offwire.lumicore-labs.com`
+- [ ] `/api/health` returns `{"success":true}`
+- [ ] Firewall configured (`ufw status`)
+- [ ] Database backups automated
+- [ ] Deployment script tested (`./deploy.sh`)
 
 ---
 
-**Last Updated:** December 2024  
-**Version:** 1.0.0
+**Last Updated:** August 2026  
+**Version:** 2.0.0 — Offwire

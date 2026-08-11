@@ -1,179 +1,191 @@
 <template>
-  <div class="min-h-screen py-8">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <!-- Header -->
-      <div class="mb-8">
-        <h1 class="text-3xl font-bold text-primary mb-4">
-          {{ categoryName || 'All Products' }}
-        </h1>
-        <p class="text-secondary">
-          Discover our collection of premium clothing
-        </p>
-      </div>
+  <div class="min-h-screen bg-white py-12 px-6 lg:px-12 max-w-[1440px] mx-auto">
+    <!-- Header -->
+    <div class="mb-10">
+      <p class="text-xs font-bold tracking-[0.3em] uppercase text-gray-400 mb-2">Collection</p>
+      <h1 class="text-3xl md:text-5xl font-black tracking-tight uppercase text-black">
+        {{ currentCategoryObj?.name || 'All Products' }}
+      </h1>
+      <p class="text-gray-500 text-sm mt-2 max-w-xl">
+        {{ currentCategoryObj?.description || 'Discover our full collection of premium oversized graphic tees and apparel.' }}
+      </p>
+    </div>
 
-      <!-- Filters and Search -->
-      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8 gap-4">
-        <div class="flex flex-col sm:flex-row gap-4">
-          <!-- Search -->
-          <div class="relative">
-            <input
-              v-model="searchQuery"
-              @input="debouncedSearch"
-              type="text"
-              placeholder="Search products..."
-              class="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent"
-            />
-            <MagnifyingGlassIcon class="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-          </div>
+    <!-- Filters & Search Bar -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-6 border-b border-gray-200">
+      <!-- Search & Category Selector -->
+      <div class="flex flex-wrap items-center gap-3">
+        <!-- Search input -->
+        <div class="relative min-w-[240px]">
+          <input
+            v-model="searchQuery"
+            @input="debouncedSearch"
+            type="text"
+            placeholder="Search products..."
+            class="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-300 text-xs font-semibold tracking-wider text-black placeholder-gray-400 focus:outline-none focus:border-black transition-colors"
+          />
+          <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+          </svg>
+        </div>
 
-          <!-- Category Filter -->
+        <!-- Category Dropdown -->
+        <div class="relative">
           <select
             v-model="selectedCategory"
             @change="handleCategoryChange"
-            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent"
+            class="appearance-none pl-4 pr-10 py-2.5 bg-gray-50 border border-gray-300 text-xs font-bold tracking-wider uppercase text-black focus:outline-none focus:border-black cursor-pointer transition-colors"
           >
             <option value="">All Categories</option>
-            <option 
-              v-for="category in categories" 
-              :key="category.id" 
-              :value="category.slug"
+            <option
+              v-for="cat in categories"
+              :key="cat.id"
+              :value="cat.slug"
             >
-              {{ category.name }}
+              {{ cat.name }}
             </option>
           </select>
+          <svg class="w-4 h-4 text-black absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+          </svg>
         </div>
+      </div>
 
-        <!-- Sort -->
-        <div class="flex items-center gap-4">
-          <span class="text-sm text-secondary">Sort by:</span>
+      <!-- Sort By -->
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-bold tracking-wider uppercase text-gray-400">Sort:</span>
+        <div class="relative">
           <select
             v-model="sortBy"
             @change="fetchProducts"
-            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent"
+            class="appearance-none pl-4 pr-10 py-2.5 bg-gray-50 border border-gray-300 text-xs font-bold tracking-wider uppercase text-black focus:outline-none focus:border-black cursor-pointer transition-colors"
           >
             <option value="created_at-DESC">Newest First</option>
             <option value="created_at-ASC">Oldest First</option>
-            <option value="name-ASC">Name A-Z</option>
-            <option value="name-DESC">Name Z-A</option>
+            <option value="name-ASC">Name: A-Z</option>
+            <option value="name-DESC">Name: Z-A</option>
             <option value="price-ASC">Price: Low to High</option>
             <option value="price-DESC">Price: High to Low</option>
           </select>
+          <svg class="w-4 h-4 text-black absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+          </svg>
         </div>
       </div>
+    </div>
 
-      <!-- Products Grid -->
-      <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        <div v-for="n in 8" :key="n" class="animate-pulse">
-          <div class="bg-gray-200 h-64 rounded-lg mb-4"></div>
-          <div class="h-4 bg-gray-200 rounded mb-2"></div>
-          <div class="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-          <div class="h-4 bg-gray-200 rounded w-1/2"></div>
-        </div>
+    <!-- Loading Skeleton -->
+    <div v-if="loading" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div v-for="n in 8" :key="n" class="animate-pulse">
+        <div class="bg-gray-100 aspect-[3/4] mb-3"></div>
+        <div class="h-3 bg-gray-100 mb-2 w-3/4"></div>
+        <div class="h-3 bg-gray-100 w-1/2"></div>
       </div>
+    </div>
 
-      <div v-else-if="products.length === 0" class="text-center py-12">
-        <div class="text-6xl mb-4">🔍</div>
-        <h3 class="text-xl font-semibold text-primary mb-2">No products found</h3>
-        <p class="text-secondary mb-4">Try adjusting your search or filter criteria</p>
-        <button 
-          @click="clearFilters"
-          class="bg-primary text-background hover:bg-secondary px-6 py-2 rounded-lg transition-colors"
-        >
-          Clear Filters
-        </button>
-      </div>
+    <!-- Empty State -->
+    <div v-else-if="products.length === 0" class="text-center py-20 bg-gray-50 my-4 border border-gray-200">
+      <svg class="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+      </svg>
+      <h3 class="text-lg font-black uppercase text-black mb-1">No products found</h3>
+      <p class="text-gray-500 text-xs tracking-wider uppercase mb-6">Try clearing filters or selecting another category.</p>
+      <button
+        @click="clearFilters"
+        class="bg-black text-white px-6 py-3 text-xs font-bold tracking-widest uppercase hover:bg-gray-800 transition-colors"
+      >
+        Clear Filters
+      </button>
+    </div>
 
-      <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        <div 
-          v-for="product in products" 
-          :key="product.id"
-          class="group cursor-pointer bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
-          @click="$router.push(`/product/${product.slug}`)"
-        >
-          <div class="aspect-w-1 aspect-h-1 h-64 overflow-hidden">
-            <img 
-              :src="imageUrl(product.primary_image) || placeholderImg()" 
-              :alt="product.name"
-              class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-            />
-            <div v-if="product.discount_price" class="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-semibold">
-              SALE
-            </div>
+    <!-- Products Grid -->
+    <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div
+        v-for="product in products"
+        :key="product.id"
+        class="group cursor-pointer"
+        @click="$router.push(`/product/${product.slug}`)"
+      >
+        <!-- Product Image -->
+        <div class="relative aspect-[3/4] bg-gray-50 overflow-hidden mb-3">
+          <img
+            :src="imageUrl(product.primary_image) || placeholderImg('400x530')"
+            :alt="product.name"
+            class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            @error.once="$event.target.src = placeholderImg('400x530')"
+          />
+          <!-- NEW Badge -->
+          <div v-if="isNew(product)" class="absolute top-2 left-2 bg-black text-white text-[10px] font-black px-2 py-0.5 tracking-widest">
+            NEW
           </div>
-          <div class="p-4">
-            <h3 class="text-lg font-semibold text-primary mb-1 line-clamp-2">{{ product.name }}</h3>
-            <p class="text-sm text-secondary mb-2">{{ product.category_name }}</p>
-            <div class="flex items-center justify-between mb-3">
-              <div class="flex items-center space-x-2">
-                <span 
-                  v-if="product.discount_price" 
-                  class="text-lg font-bold text-accent"
-                >
-                  Rs. {{ product.discount_price }}
-                </span>
-                <span 
-                  :class="product.discount_price ? 'text-sm line-through text-gray-400' : 'text-lg font-bold text-accent'"
-                >
-                  Rs. {{ product.price }}
-                </span>
-              </div>
-              <div class="text-xs text-secondary">
-                Stock: {{ product.stock_quantity }}
-              </div>
-            </div>
-            <button 
+          <!-- SALE Badge -->
+          <div v-else-if="product.discount_price" class="absolute top-2 left-2 bg-black text-white text-[10px] font-black px-2 py-0.5 tracking-widest">
+            SALE
+          </div>
+          <!-- Quick Add Button -->
+          <div class="absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+            <button
               @click.stop="addToCart(product)"
               :disabled="cartLoading || product.stock_quantity === 0"
-              class="w-full bg-primary text-background hover:bg-secondary px-4 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              class="w-full bg-black text-white text-[10px] font-black py-3 tracking-widest uppercase hover:bg-gray-800 transition-colors disabled:opacity-50"
             >
-              {{ product.stock_quantity === 0 ? 'Out of Stock' : 'Add to Cart' }}
+              {{ product.stock_quantity === 0 ? 'OUT OF STOCK' : 'QUICK ADD' }}
             </button>
           </div>
         </div>
-      </div>
 
-      <!-- Pagination -->
-      <div v-if="pagination && pagination.totalPages > 1" class="mt-12 flex justify-center">
-        <nav class="flex items-center space-x-2">
-          <button
-            @click="goToPage(pagination.currentPage - 1)"
-            :disabled="!pagination.hasPrevPage"
-            class="px-3 py-2 rounded-md bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Previous
-          </button>
-          
-          <template v-for="page in getPageNumbers()" :key="page">
-            <button
-              v-if="page === '...'"
-              disabled
-              class="px-3 py-2 text-sm font-medium text-gray-500 cursor-default"
-            >
-              ...
-            </button>
-            <button
-              v-else
-              @click="goToPage(page)"
-              :class="[
-                'px-3 py-2 rounded-md text-sm font-medium',
-                page === pagination.currentPage
-                  ? 'bg-primary text-background'
-                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-              ]"
-            >
-              {{ page }}
-            </button>
-          </template>
-          
-          <button
-            @click="goToPage(pagination.currentPage + 1)"
-            :disabled="!pagination.hasNextPage"
-            class="px-3 py-2 rounded-md bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Next
-          </button>
-        </nav>
+        <!-- Product Info -->
+        <p class="text-[10px] text-gray-400 tracking-widest uppercase mb-0.5">{{ product.category_name }}</p>
+        <h3 class="text-sm font-semibold text-black mb-1 line-clamp-1">{{ product.name }}</h3>
+        <div class="flex items-center gap-2">
+          <span v-if="product.discount_price" class="text-sm font-black text-black">
+            Rs. {{ Number(product.discount_price).toLocaleString() }}
+          </span>
+          <span :class="product.discount_price ? 'text-sm line-through text-gray-400' : 'text-sm font-black text-black'">
+            Rs. {{ Number(product.price).toLocaleString() }}
+          </span>
+        </div>
       </div>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="pagination && pagination.totalPages > 1" class="mt-16 flex justify-center">
+      <nav class="flex items-center gap-2">
+        <button
+          @click="goToPage(pagination.currentPage - 1)"
+          :disabled="!pagination.hasPrevPage"
+          class="px-4 py-2 border border-gray-300 text-xs font-bold tracking-wider uppercase text-black hover:border-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          Prev
+        </button>
+
+        <template v-for="page in getPageNumbers()" :key="page">
+          <span
+            v-if="page === '...'"
+            class="px-3 py-2 text-xs font-bold text-gray-400"
+          >...</span>
+          <button
+            v-else
+            @click="goToPage(page)"
+            :class="[
+              'px-4 py-2 border text-xs font-bold tracking-wider transition-colors',
+              page === pagination.currentPage
+                ? 'bg-black border-black text-white'
+                : 'border-gray-300 text-black hover:border-black'
+            ]"
+          >
+            {{ page }}
+          </button>
+        </template>
+
+        <button
+          @click="goToPage(pagination.currentPage + 1)"
+          :disabled="!pagination.hasNextPage"
+          class="px-4 py-2 border border-gray-300 text-xs font-bold tracking-wider uppercase text-black hover:border-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          Next
+        </button>
+      </nav>
     </div>
   </div>
 </template>
@@ -182,7 +194,6 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCartStore } from '../stores/cart'
-import { MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 import { imageUrl, placeholderImg } from '../utils/images'
 import api from '../utils/api'
 
@@ -201,11 +212,17 @@ const selectedCategory = ref('')
 const sortBy = ref('created_at-DESC')
 const currentPage = ref(1)
 
-const categoryName = computed(() => {
-  if (!selectedCategory.value) return ''
-  const category = categories.value.find(c => c.slug === selectedCategory.value)
-  return category?.name || ''
+const currentCategoryObj = computed(() => {
+  if (!selectedCategory.value) return null
+  return categories.value.find(c => c.slug === selectedCategory.value) || null
 })
+
+const isNew = (product) => {
+  if (!product.created_at) return false
+  const created = new Date(product.created_at)
+  const now = new Date()
+  return (now - created) < 1000 * 60 * 60 * 24 * 30
+}
 
 // Debounced search
 let searchTimeout = null
@@ -214,13 +231,13 @@ const debouncedSearch = () => {
   searchTimeout = setTimeout(() => {
     currentPage.value = 1
     fetchProducts()
-  }, 500)
+  }, 400)
 }
 
 const fetchCategories = async () => {
   try {
     const response = await api.get('/categories')
-    categories.value = response.data.data
+    categories.value = response.data.data || []
   } catch (error) {
     console.error('Failed to fetch categories:', error)
   }
@@ -249,8 +266,8 @@ const fetchProducts = async () => {
     }
 
     const response = await api.get(`/products?${params}`)
-    products.value = response.data.data.products
-    pagination.value = response.data.data.pagination
+    products.value = response.data.data.products || []
+    pagination.value = response.data.data.pagination || null
   } catch (error) {
     console.error('Failed to fetch products:', error)
     products.value = []
@@ -261,16 +278,10 @@ const fetchProducts = async () => {
 
 const addToCart = async (product) => {
   cartLoading.value = true
-  const result = await cartStore.addToCart({
+  await cartStore.addToCart({
     productId: product.id,
     quantity: 1
   })
-  
-  if (result.success) {
-    console.log('Product added to cart successfully')
-  } else {
-    console.error('Failed to add product to cart:', result.message)
-  }
   cartLoading.value = false
 }
 
@@ -300,13 +311,12 @@ const goToPage = (page) => {
 }
 
 const getPageNumbers = () => {
+  if (!pagination.value) return []
   const { currentPage: current, totalPages } = pagination.value
   const pages = []
-  
+
   if (totalPages <= 7) {
-    for (let i = 1; i <= totalPages; i++) {
-      pages.push(i)
-    }
+    for (let i = 1; i <= totalPages; i++) pages.push(i)
   } else {
     if (current <= 4) {
       for (let i = 1; i <= 5; i++) pages.push(i)
@@ -324,29 +334,19 @@ const getPageNumbers = () => {
       pages.push(totalPages)
     }
   }
-  
+
   return pages
 }
 
-// Watch route changes
 watch(() => route.params.category, (newCategory) => {
   selectedCategory.value = newCategory || ''
   currentPage.value = 1
   fetchProducts()
 })
 
-onMounted(() => {
+onMounted(async () => {
   selectedCategory.value = route.params.category || ''
-  fetchCategories()
+  await fetchCategories()
   fetchProducts()
 })
 </script>
-
-<style scoped>
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-</style>

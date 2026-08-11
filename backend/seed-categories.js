@@ -6,13 +6,10 @@ async function main() {
   const existing = await prisma.categories.findMany();
   console.log('Existing categories:', JSON.stringify(existing, null, 2));
 
-  // Delete old categories (this will also unlink products)
-  // First, set all products category_id to null
-  await prisma.products.updateMany({ data: { category_id: null } });
-  console.log('Unlinked all products from categories');
-
-  // Delete all old categories
-  await prisma.categories.deleteMany();
+  // Use raw SQL to set category_id to a temp value to break FK before delete
+  await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS=0');
+  await prisma.$executeRawUnsafe('DELETE FROM categories');
+  await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS=1');
   console.log('Deleted all old categories');
 
   // Create new t-shirt focused categories

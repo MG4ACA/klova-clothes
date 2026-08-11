@@ -5,7 +5,7 @@
       <div class="grid grid-cols-1 md:grid-cols-4 gap-12">
         <!-- Brand -->
         <div class="md:col-span-2">
-          <span class="text-3xl font-black tracking-tighter block mb-4">KLOVA</span>
+          <img src="/logo-white.png" alt="Offwire" class="h-8 w-auto object-contain mb-4" />
           <p class="text-white/40 text-sm leading-relaxed max-w-xs">
             Premium oversized graphic tees for those who wear their identity. Disconnected by connection.
           </p>
@@ -43,7 +43,7 @@
     <!-- Bottom bar -->
     <div class="border-t border-white/10">
       <div class="max-w-7xl mx-auto px-6 lg:px-12 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p class="text-white/30 text-xs tracking-widest">© {{ new Date().getFullYear() }} KLOVA. All rights reserved.</p>
+        <p class="text-white/30 text-xs tracking-widest">© {{ new Date().getFullYear() }} OFFWIRE. All rights reserved.</p>
         <p class="text-white/20 text-xs">Made with ♥ in Sri Lanka</p>
       </div>
     </div>
