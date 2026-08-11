@@ -541,19 +541,27 @@ router.put('/products/:productId', upload.array('images', 5), async (req, res, n
 router.delete('/products/:productId', async (req, res, next) => {
   try {
     const { productId } = req.params;
+    const id = parseInt(productId);
 
-    const result = await prisma.products.updateMany({
-      where: { id: parseInt(productId) },
-      data: { is_active: false }
-    });
-
-    if (result.count === 0) {
+    const existingProduct = await prisma.products.findUnique({ where: { id } });
+    if (!existingProduct) {
       return res.status(404).json({
         success: false,
         message: 'Product not found',
         error: 'PRODUCT_NOT_FOUND'
       });
     }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete associated product images
+      await tx.product_images.deleteMany({ where: { product_id: id } });
+      // 2. Delete associated product variants
+      await tx.product_variants.deleteMany({ where: { product_id: id } });
+      // 3. Delete associated cart items
+      await tx.cart_items.deleteMany({ where: { product_id: id } });
+      // 4. Delete the product itself
+      await tx.products.delete({ where: { id } });
+    });
 
     res.json({
       success: true,

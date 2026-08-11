@@ -176,9 +176,9 @@ const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
 const navCategories = computed(() => allCategories.value.slice(0, 3))
 
 const megaTiles = computed(() => [
-  { label: 'Graphic Tees', link: '/products/graphic-tees', img: `${apiBase}/uploads/products/cat_tshirts.png` },
-  { label: 'Anime Tees',   link: '/products/anime-tees',   img: `${apiBase}/uploads/products/tshirt_anime.png` },
-  { label: 'Vintage Wash', link: '/products/vintage-wash', img: `${apiBase}/uploads/products/tshirt_vintage_fruit.png` },
+  { label: 'Graphic Tees', link: '/products/graphic-tees', img: `${apiBase}/uploads/products/offwire_tee_1.jpeg` },
+  { label: 'Anime Tees',   link: '/products/anime-tees',   img: `${apiBase}/uploads/products/offwire_tee_3.jpeg` },
+  { label: 'Vintage Wash', link: '/products/vintage-wash', img: `${apiBase}/uploads/products/offwire_tee_4.jpeg` },
 ])
 
 // Transparent over hero, black once scrolled or on inner pages

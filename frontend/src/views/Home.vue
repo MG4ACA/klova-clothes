@@ -196,9 +196,9 @@ const scrollContainer = ref(null)
 const scrollPos = ref(0)
 
 const categoryTiles = [
-  { label: 'Graphic Tees',  link: '/products/graphic-tees',  img: `${apiBase}/uploads/products/cat_tshirts.png` },
-  { label: 'Anime Tees',    link: '/products/anime-tees',    img: `${apiBase}/uploads/products/tshirt_anime.png` },
-  { label: 'Vintage Wash',  link: '/products/vintage-wash',  img: `${apiBase}/uploads/products/tshirt_vintage_fruit.png` },
+  { label: 'Graphic Tees',  link: '/products/graphic-tees',  img: `${apiBase}/uploads/products/offwire_tee_1.jpeg` },
+  { label: 'Anime Tees',    link: '/products/anime-tees',    img: `${apiBase}/uploads/products/offwire_tee_3.jpeg` },
+  { label: 'Vintage Wash',  link: '/products/vintage-wash',  img: `${apiBase}/uploads/products/offwire_tee_4.jpeg` },
 ]
 
 const isNew = (product) => {
