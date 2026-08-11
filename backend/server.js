@@ -38,8 +38,9 @@ app.use(limiter);
 
 // CORS configuration
 const allowedOrigins = [
-  process.env.FRONTEND_URL,
+  process.env.FRONTEND_URL, // Ensure this has NO trailing slash in your .env
   'https://offwire.lumicore-labs.com',
+  'https://www.offwire.lumicore-labs.com', // Added www subdomain
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:5175',
@@ -49,18 +50,24 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl)
-      // or any localhost origin in development
-      if (
-        !origin ||
-        (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost')) ||
-        allowedOrigins.includes(origin)
-      ) {
-        callback(null, true);
-      } else {
-        console.log('CORS Blocked Origin:', origin);
-        callback(new Error('Not allowed by CORS'));
+      // Allow requests with no origin, or literal "null" string origin
+      if (!origin || origin === 'null') {
+        return callback(null, true);
       }
+
+      // Allow localhost in development
+      if (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost')) {
+        return callback(null, true);
+      }
+
+      // Allow exact matches
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.log('CORS Blocked Origin:', origin);
+      // To avoid a 500 Error and return a standard CORS failure, pass false instead of throwing an Error:
+      callback(null, false); 
     },
     credentials: true,
   }),
